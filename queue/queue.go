@@ -3,7 +3,7 @@ package queue
 import "sync"
 
 type Queue struct {
-	mu    sync.Locker
+	mu    sync.Mutex
 	items []interface{}
 }
 
@@ -16,6 +16,9 @@ func (q *Queue) Enqueue(items ...interface{}) {
 func (q *Queue) Dequeue() interface{} {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.IsEmpty() {
+		return nil
+	}
 	item := q.items[0]
 	q.items = q.items[1:]
 	return item
@@ -40,4 +43,14 @@ func (q *Queue) Contains(item interface{}) bool {
 
 func (q *Queue) ToSlice() []interface{} {
 	return q.items
+}
+
+func (q *Queue) IsEmpty() bool {
+	return q.Count() == 0
+}
+
+func (q *Queue) Clear() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.items = nil
 }
