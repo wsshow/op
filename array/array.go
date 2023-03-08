@@ -55,11 +55,9 @@ func (a *Array) Count() int {
 	return len(a.data)
 }
 
-func (a *Array) ForEach(f func(e interface{})) {
-	d := a.data
-	cnt := len(d)
-	for i := 0; i < cnt; i++ {
-		f(d[i])
+func (a *Array) ForEach(f func(interface{})) {
+	for _, v := range a.data {
+		f(v)
 	}
 }
 
@@ -75,14 +73,20 @@ func (a *Array) Sort(less func(i, j int) bool) {
 	sort.Slice(a.data, less)
 }
 
-func (a *Array) Filter(f func(e interface{}) bool) *Array {
-	newArr := NewArray()
-	d := a.data
-	cnt := len(d)
-	for i := 0; i < cnt; i++ {
-		if f(d[i]) {
-			newArr.Add(d[i])
+func (a *Array) Filter(f func(interface{}) bool) *Array {
+	na := NewArray()
+	for _, v := range a.data {
+		if f(v) {
+			na.Add(f(v))
 		}
 	}
-	return newArr
+	return na
+}
+
+func (a *Array) Map(f func(interface{}) interface{}) *Array {
+	na := NewArray()
+	for _, v := range a.data {
+		na.Add(f(v))
+	}
+	return na
 }
