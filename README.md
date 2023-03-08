@@ -32,7 +32,7 @@
 ## queue
 | 方法                            | 描述                           |
 | :------------------------------ | :----------------------------- |
-| NewArray() *Queue               | 创建一个新的Queue对象          |
+| NewQueue() *Queue               | 创建一个新的Queue对象          |
 | Enqueue(items ...interface{})   | 将一个或多个项添加到队列末尾   |
 | Dequeue() interface{}           | 从队列的开头移除并返回项       |
 | Peek() interface{}              | 返回队列开头的项，但不会移除它 |
