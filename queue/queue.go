@@ -7,7 +7,7 @@ type Queue struct {
 	items []interface{}
 }
 
-func NewArray() *Queue {
+func NewQueue() *Queue {
 	return new(Queue)
 }
 
