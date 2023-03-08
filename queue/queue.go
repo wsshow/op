@@ -58,3 +58,19 @@ func (q *Queue) Clear() {
 	defer q.mu.Unlock()
 	q.items = nil
 }
+
+func (q *Queue) ForEach(f func(interface{})) {
+	for _, qItem := range q.items {
+		f(qItem)
+	}
+}
+
+func (q *Queue) Map(f func(interface{}) interface{}) *Queue {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	nq := NewQueue()
+	for _, qItem := range q.items {
+		nq.Enqueue(f(qItem))
+	}
+	return nq
+}
