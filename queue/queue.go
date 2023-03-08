@@ -7,6 +7,10 @@ type Queue struct {
 	items []interface{}
 }
 
+func NewArray() *Queue {
+	return new(Queue)
+}
+
 func (q *Queue) Enqueue(items ...interface{}) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
