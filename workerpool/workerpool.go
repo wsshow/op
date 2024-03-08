@@ -2,10 +2,11 @@ package workerpool
 
 import (
 	"context"
-	"op/deque"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/wsshow/op/deque"
 )
 
 const (
