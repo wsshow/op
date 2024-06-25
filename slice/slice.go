@@ -1,6 +1,6 @@
 package slice
 
-import "golang.org/x/exp/slices"
+import "sort"
 
 type Slice[T any] struct {
 	data []T
@@ -73,6 +73,8 @@ func (sl *Slice[T]) Reduce(callbackfn func(previousValue T, currentValue T) T, i
 }
 
 func (sl *Slice[T]) Sort(compareFn func(a T, b T) bool) *Slice[T] {
-	slices.SortFunc(sl.data, compareFn)
+	sort.Slice(sl.data, func(i, j int) bool {
+		return compareFn(sl.data[i], sl.data[j])
+	})
 	return sl
 }
