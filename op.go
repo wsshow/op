@@ -4,6 +4,7 @@ import (
 	"github.com/wsshow/op/deque"
 	"github.com/wsshow/op/emission"
 	"github.com/wsshow/op/linq"
+	"github.com/wsshow/op/process"
 	"github.com/wsshow/op/slice"
 	"github.com/wsshow/op/str"
 	"github.com/wsshow/op/workerpool"
@@ -38,4 +39,9 @@ func NewEmitter() *emission.Emitter {
 // 创建一个Linq对象
 func LinqFrom[T comparable](arr []T) linq.Linq[T] {
 	return linq.From(arr)
+}
+
+// 创建进程管理器对象
+func NewProcessManager() *process.ProcessManager {
+	return process.NewProcessManager()
 }
