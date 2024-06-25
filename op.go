@@ -3,6 +3,7 @@ package op
 import (
 	"github.com/wsshow/op/deque"
 	"github.com/wsshow/op/emission"
+	"github.com/wsshow/op/linq"
 	"github.com/wsshow/op/slice"
 	"github.com/wsshow/op/str"
 	"github.com/wsshow/op/workerpool"
@@ -32,4 +33,9 @@ func NewWorkerPool(maxWorkers int) *workerpool.WorkerPool {
 // 创建一个事件发射器对象
 func NewEmitter() *emission.Emitter {
 	return emission.NewEmitter()
+}
+
+// 创建一个Linq对象
+func LinqFrom[T comparable](arr []T) linq.Linq[T] {
+	return linq.From(arr)
 }
