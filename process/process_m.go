@@ -37,6 +37,15 @@ func (pm *ProcessManager) AddProcess(co CmdOptions) (err error) {
 	return
 }
 
+func (pm *ProcessManager) UpdateProcess(process *Process) (err error) {
+	p, bFound := pm.GetProcess(process.CmdOptions().Name)
+	if !bFound {
+		return errors.New("process not found")
+	}
+	pm.processMap[p.CmdOptions().Name] = process
+	return
+}
+
 func (pm *ProcessManager) RemoveProcess(name string) (err error) {
 	if p, bFound := pm.GetProcess(name); bFound {
 		p.Stop()
