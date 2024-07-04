@@ -35,5 +35,8 @@ func (pm *ProcessManager) AddProcess(co CmdOptions) (err error) {
 }
 
 func (pm *ProcessManager) RemoveProcess(name string) {
+	if p, bFound := pm.GetProcess(name); bFound {
+		p.Stop()
+	}
 	delete(pm.processMap, name)
 }
