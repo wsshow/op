@@ -30,13 +30,18 @@ func (pm *ProcessManager) AddProcess(co CmdOptions) (err error) {
 		return errors.New("process already exists")
 	}
 	process := NewProcess(co).AsyncRun()
+	if err := process.Error(); err != nil {
+		return err
+	}
 	pm.processMap[name] = process
 	return
 }
 
-func (pm *ProcessManager) RemoveProcess(name string) {
+func (pm *ProcessManager) RemoveProcess(name string) (err error) {
 	if p, bFound := pm.GetProcess(name); bFound {
 		p.Stop()
+		err = p.Error()
 	}
 	delete(pm.processMap, name)
+	return
 }
