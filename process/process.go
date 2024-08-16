@@ -7,6 +7,7 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type CmdOptions struct {
 	OnRunAfter  func(*Process)
 	OnStdout    func(string)
 	OnStderr    func(string)
+	SysProcAttr *syscall.SysProcAttr
 }
 
 type Process struct {
@@ -104,6 +106,7 @@ func (p *Process) AsyncRun() *Process {
 		}()
 
 		p.pExec = exec.CommandContext(ctx, p.cmdOptions.ExecPath, p.cmdOptions.Args...)
+		p.pExec.SysProcAttr = p.cmdOptions.SysProcAttr
 
 		if stdout, err = p.pExec.StdoutPipe(); err != nil {
 			return
@@ -161,6 +164,7 @@ func (p *Process) Run() *Process {
 	}()
 
 	p.pExec = exec.CommandContext(ctx, p.cmdOptions.ExecPath, p.cmdOptions.Args...)
+	p.pExec.SysProcAttr = p.cmdOptions.SysProcAttr
 
 	if stdout, err = p.pExec.StdoutPipe(); err != nil {
 		return p
