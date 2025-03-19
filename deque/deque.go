@@ -2,268 +2,295 @@ package deque
 
 import "fmt"
 
-// minCapacity is the smallest capacity that deque may have. Must be power of 2
-// for bitwise modulus: x % n == x & (n - 1).
+// minCapacity 是双端队列的最小容量，必须是2的幂，用于位运算取模
 const minCapacity = 16
 
-// Deque represents a single instance of the deque data structure. A Deque
-// instance contains items of the type specified by the type argument.
+// Deque 表示一个双端队列实例，支持泛型类型T
 type Deque[T any] struct {
-	buf    []T
-	head   int
-	tail   int
-	count  int
-	minCap int
+	buffer  []T // 存储元素的缓冲区
+	headIdx int // 头部索引
+	tailIdx int // 尾部索引
+	size    int // 当前元素数量
+	baseCap int // 基础容量
 }
 
-// New creates a new Deque, optionally setting the current and minimum capacity
-// when non-zero values are given for these. The Deque instance returns
-// operates on items of the type specified by the type argument. For example,
-// to create a Deque that contains strings,
-//
-//	stringDeque := deque.New[string]()
-//
-// To create a Deque with capacity to store 2048 ints without resizing, and
-// that will not resize below space for 32 items when removing items:
-//
-//	d := deque.New[int](2048, 32)
-//
-// To create a Deque that has not yet allocated memory, but after it does will
-// never resize to have space for less than 64 items:
-//
-//	d := deque.New[int](0, 64)
-//
-// Any size values supplied here are rounded up to the nearest power of 2.
-func New[T any](size ...int) *Deque[T] {
-	var capacity, minimum int
-	if len(size) >= 1 {
-		capacity = size[0]
-		if len(size) >= 2 {
-			minimum = size[1]
-		}
-	}
-
-	minCap := minCapacity
-	for minCap < minimum {
-		minCap <<= 1
-	}
-
-	var buf []T
-	if capacity != 0 {
-		bufSize := minCap
-		for bufSize < capacity {
-			bufSize <<= 1
-		}
-		buf = make([]T, bufSize)
-	}
-
-	return &Deque[T]{
-		buf:    buf,
-		minCap: minCap,
-	}
+// New 创建并返回一个新的双端队列实例
+func New[T any]() *Deque[T] {
+	return &Deque[T]{baseCap: minCapacity}
 }
 
-// Cap returns the current capacity of the Deque. If q is nil, q.Cap() is zero.
-func (q *Deque[T]) Cap() int {
-	if q == nil {
+// Capacity 返回当前缓冲区的容量，若队列为nil则返回0
+func (d *Deque[T]) Capacity() int {
+	if d == nil {
 		return 0
 	}
-	return len(q.buf)
+	return len(d.buffer)
 }
 
-// Len returns the number of elements currently stored in the queue. If q is
-// nil, q.Len() is zero.
-func (q *Deque[T]) Len() int {
-	if q == nil {
+// Size 返回当前存储的元素数量，若队列为nil则返回0
+func (d *Deque[T]) Size() int {
+	if d == nil {
 		return 0
 	}
-	return q.count
+	return d.size
 }
 
-// PushBack appends an element to the back of the queue. Implements FIFO when
-// elements are removed with PopFront, and LIFO when elements are removed with
-// PopBack.
-func (q *Deque[T]) PushBack(elem T) {
-	q.growIfFull()
-
-	q.buf[q.tail] = elem
-	// Calculate new tail position.
-	q.tail = q.next(q.tail)
-	q.count++
+// PushBack 在队列尾部添加元素，支持FIFO和LIFO操作
+func (d *Deque[T]) PushBack(elem T) {
+	d.ensureCapacity()
+	d.buffer[d.tailIdx] = elem
+	d.tailIdx = d.nextIndex(d.tailIdx)
+	d.size++
 }
 
-// PushFront prepends an element to the front of the queue.
-func (q *Deque[T]) PushFront(elem T) {
-	q.growIfFull()
-
-	// Calculate new head position.
-	q.head = q.prev(q.head)
-	q.buf[q.head] = elem
-	q.count++
+// PushFront 在队列头部添加元素
+func (d *Deque[T]) PushFront(elem T) {
+	d.ensureCapacity()
+	d.headIdx = d.prevIndex(d.headIdx)
+	d.buffer[d.headIdx] = elem
+	d.size++
 }
 
-// PopFront removes and returns the element from the front of the queue.
-// Implements FIFO when used with PushBack. If the queue is empty, the call
-// panics.
-func (q *Deque[T]) PopFront() T {
-	if q.count <= 0 {
+// PopFront 从队列头部移除并返回元素，若队列为空则panic
+func (d *Deque[T]) PopFront() T {
+	if d.size == 0 {
 		panic("deque: PopFront() called on empty queue")
 	}
-	ret := q.buf[q.head]
-	var zero T
-	q.buf[q.head] = zero
-	// Calculate new head position.
-	q.head = q.next(q.head)
-	q.count--
-
-	q.shrinkIfExcess()
-	return ret
+	elem := d.buffer[d.headIdx]
+	d.buffer[d.headIdx] = *new(T) // 清空元素
+	d.headIdx = d.nextIndex(d.headIdx)
+	d.size--
+	d.shrinkIfNeeded()
+	return elem
 }
 
-// PopBack removes and returns the element from the back of the queue.
-// Implements LIFO when used with PushBack. If the queue is empty, the call
-// panics.
-func (q *Deque[T]) PopBack() T {
-	if q.count <= 0 {
+// PopBack 从队列尾部移除并返回元素，若队列为空则panic
+func (d *Deque[T]) PopBack() T {
+	if d.size == 0 {
 		panic("deque: PopBack() called on empty queue")
 	}
-
-	// Calculate new tail position
-	q.tail = q.prev(q.tail)
-
-	// Remove value at tail.
-	ret := q.buf[q.tail]
-	var zero T
-	q.buf[q.tail] = zero
-	q.count--
-
-	q.shrinkIfExcess()
-	return ret
+	d.tailIdx = d.prevIndex(d.tailIdx)
+	elem := d.buffer[d.tailIdx]
+	d.buffer[d.tailIdx] = *new(T) // 清空元素
+	d.size--
+	d.shrinkIfNeeded()
+	return elem
 }
 
-// Front returns the element at the front of the queue. This is the element
-// that would be returned by PopFront. This call panics if the queue is empty.
-func (q *Deque[T]) Front() T {
-	if q.count <= 0 {
+// Front 返回队列头部元素，若队列为空则panic
+func (d *Deque[T]) Front() T {
+	if d.size == 0 {
 		panic("deque: Front() called when empty")
 	}
-	return q.buf[q.head]
+	return d.buffer[d.headIdx]
 }
 
-// Back returns the element at the back of the queue. This is the element that
-// would be returned by PopBack. This call panics if the queue is empty.
-func (q *Deque[T]) Back() T {
-	if q.count <= 0 {
+// Back 返回队列尾部元素，若队列为空则panic
+func (d *Deque[T]) Back() T {
+	if d.size == 0 {
 		panic("deque: Back() called when empty")
 	}
-	return q.buf[q.prev(q.tail)]
+	return d.buffer[d.prevIndex(d.tailIdx)]
 }
 
-// At returns the element at index i in the queue without removing the element
-// from the queue. This method accepts only non-negative index values. At(0)
-// refers to the first element and is the same as Front(). At(Len()-1) refers
-// to the last element and is the same as Back(). If the index is invalid, the
-// call panics.
-//
-// The purpose of At is to allow Deque to serve as a more general purpose
-// circular buffer, where items are only added to and removed from the ends of
-// the deque, but may be read from any place within the deque. Consider the
-// case of a fixed-size circular log buffer: A new entry is pushed onto one end
-// and when full the oldest is popped from the other end. All the log entries
-// in the buffer must be readable without altering the buffer contents.
-func (q *Deque[T]) At(i int) T {
-	if i < 0 || i >= q.count {
-		panic(outOfRangeText(i, q.Len()))
-	}
-	// bitwise modulus
-	return q.buf[(q.head+i)&(len(q.buf)-1)]
+// At 返回指定索引处的元素，不移除元素，若索引无效则panic
+func (d *Deque[T]) At(index int) T {
+	d.checkIndex(index)
+	return d.buffer[d.realIndex(index)]
 }
 
-// Set assigns the item to index i in the queue. Set indexes the deque the same
-// as At but perform the opposite operation. If the index is invalid, the call
-// panics.
-func (q *Deque[T]) Set(i int, item T) {
-	if i < 0 || i >= q.count {
-		panic(outOfRangeText(i, q.Len()))
-	}
-	// bitwise modulus
-	q.buf[(q.head+i)&(len(q.buf)-1)] = item
+// Set 将指定索引处的值设置为item，若索引无效则panic
+func (d *Deque[T]) Set(index int, item T) {
+	d.checkIndex(index)
+	d.buffer[d.realIndex(index)] = item
 }
 
-// Clear removes all elements from the queue, but retains the current capacity.
-// This is useful when repeatedly reusing the queue at high frequency to avoid
-// GC during reuse. The queue will not be resized smaller as long as items are
-// only added. Only when items are removed is the queue subject to getting
-// resized smaller.
-func (q *Deque[T]) Clear() {
-	var zero T
-	modBits := len(q.buf) - 1
-	h := q.head
-	for i := 0; i < q.Len(); i++ {
-		q.buf[(h+i)&modBits] = zero
-	}
-	q.head = 0
-	q.tail = 0
-	q.count = 0
-}
-
-// Rotate rotates the deque n steps front-to-back. If n is negative, rotates
-// back-to-front. Having Deque provide Rotate avoids resizing that could happen
-// if implementing rotation using only Pop and Push methods. If q.Len() is one
-// or less, or q is nil, then Rotate does nothing.
-func (q *Deque[T]) Rotate(n int) {
-	if q.Len() <= 1 {
+// Clear 清空队列但保留当前容量
+func (d *Deque[T]) Clear() {
+	if d.size == 0 {
 		return
 	}
-	// Rotating a multiple of q.count is same as no rotation.
-	n %= q.count
-	if n == 0 {
-		return
+	// 重置所有字段并清空缓冲区内容
+	for i := d.headIdx; i != d.tailIdx; i = d.nextIndex(i) {
+		d.buffer[i] = *new(T)
 	}
+	d.headIdx = 0
+	d.tailIdx = 0
+	d.size = 0
+}
 
-	modBits := len(q.buf) - 1
-	// If no empty space in buffer, only move head and tail indexes.
-	if q.head == q.tail {
-		// Calculate new head and tail using bitwise modulus.
-		q.head = (q.head + n) & modBits
-		q.tail = q.head
-		return
-	}
-
-	var zero T
-
+// Grow 确保队列有足够空间容纳n个额外元素，若n为负则panic
+func (d *Deque[T]) Grow(n int) {
 	if n < 0 {
-		// Rotate back to front.
-		for ; n < 0; n++ {
-			// Calculate new head and tail using bitwise modulus.
-			q.head = (q.head - 1) & modBits
-			q.tail = (q.tail - 1) & modBits
-			// Put tail value at head and remove value at tail.
-			q.buf[q.head] = q.buf[q.tail]
-			q.buf[q.tail] = zero
-		}
+		panic("deque.Grow: negative count")
+	}
+	if d.Capacity()-d.size >= n {
+		return
+	}
+	newCap := d.calculateNewCapacity(n)
+	d.resize(newCap)
+}
+
+// Rotate 将队列旋转n步，正数向后，负数向前，若元素少于2则无操作
+func (d *Deque[T]) Rotate(steps int) {
+	if d == nil || d.size <= 1 {
+		return
+	}
+	steps %= d.size
+	if steps == 0 {
 		return
 	}
 
-	// Rotate front to back.
-	for ; n > 0; n-- {
-		// Put head value at tail and remove value at head.
-		q.buf[q.tail] = q.buf[q.head]
-		q.buf[q.head] = zero
-		// Calculate new head and tail using bitwise modulus.
-		q.head = (q.head + 1) & modBits
-		q.tail = (q.tail + 1) & modBits
+	modBits := len(d.buffer) - 1
+	if steps > 0 {
+		d.headIdx = (d.headIdx + steps) & modBits
+		d.tailIdx = (d.tailIdx + steps) & modBits
+	} else {
+		d.headIdx = (d.headIdx + steps) & modBits
+		d.tailIdx = (d.tailIdx + steps) & modBits
 	}
 }
 
-// Index returns the index into the Deque of the first item satisfying f(item),
-// or -1 if none do. If q is nil, then -1 is always returned. Search is linear
-// starting with index 0.
-func (q *Deque[T]) Index(f func(T) bool) int {
-	if q.Len() > 0 {
-		modBits := len(q.buf) - 1
-		for i := 0; i < q.count; i++ {
-			if f(q.buf[(q.head+i)&modBits]) {
+// Index 返回第一个满足条件的元素索引，从头开始搜索，未找到返回-1
+func (d *Deque[T]) Index(match func(T) bool) int {
+	if d == nil || d.size == 0 {
+		return -1
+	}
+	return d.search(match, true)
+}
+
+// RIndex 从尾部开始搜索第一个满足条件的元素索引，返回从头部计算的索引
+func (d *Deque[T]) RIndex(match func(T) bool) int {
+	if d == nil || d.size == 0 {
+		return -1
+	}
+	return d.search(match, false)
+}
+
+// Insert 在指定位置插入元素，若索引超出范围则添加到头部或尾部
+func (d *Deque[T]) Insert(at int, item T) {
+	if at <= 0 {
+		d.PushFront(item)
+		return
+	}
+	if at >= d.size {
+		d.PushBack(item)
+		return
+	}
+	d.insertAtMiddle(at, item)
+}
+
+// Remove 移除并返回指定索引处的元素，若索引无效则panic
+func (d *Deque[T]) Remove(at int) T {
+	d.checkIndex(at)
+	if at == 0 {
+		return d.PopFront()
+	}
+	if at == d.size-1 {
+		return d.PopBack()
+	}
+	return d.removeFromMiddle(at)
+}
+
+// SetBaseCap 设置基础容量，确保至少能存储指定数量的元素
+func (d *Deque[T]) SetBaseCap(baseCap int) {
+	newCap := minCapacity
+	for newCap < baseCap {
+		newCap <<= 1
+	}
+	d.baseCap = newCap
+	if d.Capacity() < newCap {
+		d.resize(newCap)
+	}
+}
+
+// Swap 交换两个索引处的值，若索引无效则panic
+func (d *Deque[T]) Swap(idxA, idxB int) {
+	d.checkIndex(idxA)
+	d.checkIndex(idxB)
+	if idxA != idxB {
+		a, b := d.realIndex(idxA), d.realIndex(idxB)
+		d.buffer[a], d.buffer[b] = d.buffer[b], d.buffer[a]
+	}
+}
+
+// 以下为内部辅助方法
+
+// checkIndex 检查索引是否有效
+func (d *Deque[T]) checkIndex(i int) {
+	if i < 0 || i >= d.size {
+		panic(fmt.Sprintf("deque: index out of range %d with length %d", i, d.size))
+	}
+}
+
+// realIndex 计算实际缓冲区索引
+func (d *Deque[T]) realIndex(i int) int {
+	return (d.headIdx + i) & (len(d.buffer) - 1)
+}
+
+// prevIndex 计算前一个索引位置
+func (d *Deque[T]) prevIndex(i int) int {
+	return (i - 1) & (len(d.buffer) - 1)
+}
+
+// nextIndex 计算下一个索引位置
+func (d *Deque[T]) nextIndex(i int) int {
+	return (i + 1) & (len(d.buffer) - 1)
+}
+
+// ensureCapacity 在队列满时扩展容量
+func (d *Deque[T]) ensureCapacity() {
+	if d.buffer == nil {
+		d.buffer = make([]T, d.baseCap)
+	} else if d.size == len(d.buffer) {
+		d.resize(d.size << 1)
+	}
+}
+
+// shrinkIfNeeded 在队列占用小于1/4时缩减容量
+func (d *Deque[T]) shrinkIfNeeded() {
+	if len(d.buffer) > d.baseCap && (d.size<<2) <= len(d.buffer) {
+		d.resize(d.size << 1)
+	}
+}
+
+// resize 调整队列到指定大小
+func (d *Deque[T]) resize(newSize int) {
+	newBuffer := make([]T, newSize)
+	if d.size > 0 {
+		if d.tailIdx > d.headIdx {
+			copy(newBuffer, d.buffer[d.headIdx:d.tailIdx])
+		} else {
+			n := copy(newBuffer, d.buffer[d.headIdx:])
+			copy(newBuffer[n:], d.buffer[:d.tailIdx])
+		}
+	}
+	d.buffer = newBuffer
+	d.headIdx = 0
+	d.tailIdx = d.size
+}
+
+// calculateNewCapacity 计算需要的新容量
+func (d *Deque[T]) calculateNewCapacity(n int) int {
+	cap := max(d.Capacity(), minCapacity)
+	for cap < d.size+n {
+		cap <<= 1
+	}
+	return cap
+}
+
+// search 执行线性搜索，正向或反向
+func (d *Deque[T]) search(match func(T) bool, forward bool) int {
+	modBits := len(d.buffer) - 1
+	if forward {
+		for i := 0; i < d.size; i++ {
+			if match(d.buffer[(d.headIdx+i)&modBits]) {
+				return i
+			}
+		}
+	} else {
+		for i := d.size - 1; i >= 0; i-- {
+			if match(d.buffer[(d.headIdx+i)&modBits]) {
 				return i
 			}
 		}
@@ -271,150 +298,51 @@ func (q *Deque[T]) Index(f func(T) bool) int {
 	return -1
 }
 
-// RIndex is the same as Index, but searches from Back to Front. The index
-// returned is from Front to Back, where index 0 is the index of the item
-// returned by Front().
-func (q *Deque[T]) RIndex(f func(T) bool) int {
-	if q.Len() > 0 {
-		modBits := len(q.buf) - 1
-		for i := q.count - 1; i >= 0; i-- {
-			if f(q.buf[(q.head+i)&modBits]) {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-// Insert is used to insert an element into the middle of the queue, before the
-// element at the specified index. Insert(0,e) is the same as PushFront(e) and
-// Insert(Len(),e) is the same as PushBack(e). Accepts only non-negative index
-// values, and panics if index is out of range.
-//
-// Important: Deque is optimized for O(1) operations at the ends of the queue,
-// not for operations in the the middle. Complexity of this function is
-// constant plus linear in the lesser of the distances between the index and
-// either of the ends of the queue.
-func (q *Deque[T]) Insert(at int, item T) {
-	if at < 0 || at > q.count {
-		panic(outOfRangeText(at, q.Len()))
-	}
-	if at*2 < q.count {
-		q.PushFront(item)
-		front := q.head
+// insertAtMiddle 在中间位置插入元素
+func (d *Deque[T]) insertAtMiddle(at int, item T) {
+	if at*2 < d.size {
+		d.PushFront(item)
 		for i := 0; i < at; i++ {
-			next := q.next(front)
-			q.buf[front], q.buf[next] = q.buf[next], q.buf[front]
-			front = next
+			a := d.realIndex(i)
+			b := d.realIndex(i + 1)
+			d.buffer[a], d.buffer[b] = d.buffer[b], d.buffer[a]
 		}
-		return
-	}
-	swaps := q.count - at
-	q.PushBack(item)
-	back := q.prev(q.tail)
-	for i := 0; i < swaps; i++ {
-		prev := q.prev(back)
-		q.buf[back], q.buf[prev] = q.buf[prev], q.buf[back]
-		back = prev
-	}
-}
-
-// Remove removes and returns an element from the middle of the queue, at the
-// specified index. Remove(0) is the same as PopFront() and Remove(Len()-1) is
-// the same as PopBack(). Accepts only non-negative index values, and panics if
-// index is out of range.
-//
-// Important: Deque is optimized for O(1) operations at the ends of the queue,
-// not for operations in the the middle. Complexity of this function is
-// constant plus linear in the lesser of the distances between the index and
-// either of the ends of the queue.
-func (q *Deque[T]) Remove(at int) T {
-	if at < 0 || at >= q.Len() {
-		panic(outOfRangeText(at, q.Len()))
-	}
-
-	rm := (q.head + at) & (len(q.buf) - 1)
-	if at*2 < q.count {
-		for i := 0; i < at; i++ {
-			prev := q.prev(rm)
-			q.buf[prev], q.buf[rm] = q.buf[rm], q.buf[prev]
-			rm = prev
-		}
-		return q.PopFront()
-	}
-	swaps := q.count - at - 1
-	for i := 0; i < swaps; i++ {
-		next := q.next(rm)
-		q.buf[rm], q.buf[next] = q.buf[next], q.buf[rm]
-		rm = next
-	}
-	return q.PopBack()
-}
-
-// SetMinCapacity sets a minimum capacity of 2^minCapacityExp. If the value of
-// the minimum capacity is less than or equal to the minimum allowed, then
-// capacity is set to the minimum allowed. This may be called at anytime to set
-// a new minimum capacity.
-//
-// Setting a larger minimum capacity may be used to prevent resizing when the
-// number of stored items changes frequently across a wide range.
-func (q *Deque[T]) SetMinCapacity(minCapacityExp uint) {
-	if 1<<minCapacityExp > minCapacity {
-		q.minCap = 1 << minCapacityExp
 	} else {
-		q.minCap = minCapacity
-	}
-}
-
-// prev returns the previous buffer position wrapping around buffer.
-func (q *Deque[T]) prev(i int) int {
-	return (i - 1) & (len(q.buf) - 1) // bitwise modulus
-}
-
-// next returns the next buffer position wrapping around buffer.
-func (q *Deque[T]) next(i int) int {
-	return (i + 1) & (len(q.buf) - 1) // bitwise modulus
-}
-
-// growIfFull resizes up if the buffer is full.
-func (q *Deque[T]) growIfFull() {
-	if q.count != len(q.buf) {
-		return
-	}
-	if len(q.buf) == 0 {
-		if q.minCap == 0 {
-			q.minCap = minCapacity
+		d.PushBack(item)
+		for i := d.size - 2; i >= at; i-- {
+			a := d.realIndex(i)
+			b := d.realIndex(i + 1)
+			d.buffer[a], d.buffer[b] = d.buffer[b], d.buffer[a]
 		}
-		q.buf = make([]T, q.minCap)
-		return
-	}
-	q.resize()
-}
-
-// shrinkIfExcess resize down if the buffer 1/4 full.
-func (q *Deque[T]) shrinkIfExcess() {
-	if len(q.buf) > q.minCap && (q.count<<2) == len(q.buf) {
-		q.resize()
 	}
 }
 
-// resize resizes the deque to fit exactly twice its current contents. This is
-// used to grow the queue when it is full, and also to shrink it when it is
-// only a quarter full.
-func (q *Deque[T]) resize() {
-	newBuf := make([]T, q.count<<1)
-	if q.tail > q.head {
-		copy(newBuf, q.buf[q.head:q.tail])
+// removeFromMiddle 从中间移除元素
+func (d *Deque[T]) removeFromMiddle(at int) T {
+	realIdx := d.realIndex(at)
+	elem := d.buffer[realIdx]
+	if at*2 < d.size {
+		for i := at; i > 0; i-- {
+			a := d.realIndex(i - 1)
+			b := d.realIndex(i)
+			d.buffer[b] = d.buffer[a]
+		}
+		d.PopFront()
 	} else {
-		n := copy(newBuf, q.buf[q.head:])
-		copy(newBuf[n:], q.buf[:q.tail])
+		for i := at; i < d.size-1; i++ {
+			a := d.realIndex(i)
+			b := d.realIndex(i + 1)
+			d.buffer[a] = d.buffer[b]
+		}
+		d.PopBack()
 	}
-
-	q.head = 0
-	q.tail = q.count
-	q.buf = newBuf
+	return elem
 }
 
-func outOfRangeText(i, len int) string {
-	return fmt.Sprintf("deque: index out of range %d with length %d", i, len)
+// max 返回两个整数中的较大值
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

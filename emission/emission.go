@@ -4,310 +4,193 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"sync"
 )
 
-// Default number of maximum listeners for an event.
+// DefaultMaxListeners 默认的最大监听器数量
 const DefaultMaxListeners = 10
 
-// Error presented when an invalid argument is provided as a listener function
-var ErrNoneFunction = errors.New("kind of value for listener is not Func")
+// ErrNoneFunction 当监听器不是函数时返回的错误
+var ErrNoneFunction = errors.New("listener must be a function")
 
-// RecoveryListener ...
-type RecoveryListener func(interface{}, interface{}, error)
+// RecoveryListener 定义恢复监听器的签名，用于处理 panic
+type RecoveryListener[T comparable] func(event T, listener interface{}, err error)
 
-// Emitter ...
-type Emitter struct {
-	// Mutex to prevent race conditions within the Emitter.
-	*sync.Mutex
-	// Map of event to a slice of listener function's reflect Values.
-	events map[interface{}][]reflect.Value
-	// Optional RecoveryListener to call when a panic occurs.
-	recoverer RecoveryListener
-	// Maximum listeners for debugging potential memory leaks.
-	maxListeners int
-	// Map used to remove Listeners wrapped in a Once func
-	onces map[reflect.Value]reflect.Value
+// Listener 定义监听器函数的签名，接受泛型参数
+type Listener[T comparable] func(args ...T)
+
+// Emitter 是一个泛型事件发射器，用于管理事件的监听和触发
+// T 必须是 comparable 类型，因为它用作 map 的键
+type Emitter[T comparable] struct {
+	mu           sync.Mutex                    // 互斥锁，确保线程安全
+	events       map[T][]Listener[T]           // 事件到监听器列表的映射
+	recoverer    RecoveryListener[T]           // 可选的恢复监听器，用于处理 panic
+	maxListeners int                           // 每个事件的最大监听器数量，用于调试内存泄漏
+	onces        map[*Listener[T]]*Listener[T] // 用于记录 Once 包装的监听器
 }
 
-// AddListener appends the listener argument to the event arguments slice
-// in the Emitter's events map. If the number of listeners for an event
-// is greater than the Emitter's maximum listeners then a warning is printed.
-// If the relect Value of the listener does not have a Kind of Func then
-// AddListener panics. If a RecoveryListener has been set then it is called
-// recovering from the panic.
-func (emitter *Emitter) AddListener(event, listener interface{}) *Emitter {
-	emitter.Lock()
-	defer emitter.Unlock()
-
-	fn := reflect.ValueOf(listener)
-
-	if reflect.Func != fn.Kind() {
-		if nil == emitter.recoverer {
-			panic(ErrNoneFunction)
-		} else {
-			emitter.recoverer(event, listener, ErrNoneFunction)
-		}
+// NewEmitter 创建一个新的泛型事件发射器
+// 返回初始化好的 Emitter 实例，默认最大监听器数为 DefaultMaxListeners
+func NewEmitter[T comparable]() *Emitter[T] {
+	return &Emitter[T]{
+		events:       make(map[T][]Listener[T]),
+		maxListeners: DefaultMaxListeners,
+		onces:        make(map[*Listener[T]]*Listener[T]),
 	}
-
-	if emitter.maxListeners != -1 && emitter.maxListeners < len(emitter.events[event])+1 {
-		fmt.Fprintf(os.Stdout, "Warning: event `%v` has exceeded the maximum "+
-			"number of listeners of %d.\n", event, emitter.maxListeners)
-	}
-
-	emitter.events[event] = append(emitter.events[event], fn)
-
-	return emitter
 }
 
-// On is an alias for AddListener.
-func (emitter *Emitter) On(event, listener interface{}) *Emitter {
-	return emitter.AddListener(event, listener)
-}
+// AddListener 添加监听器到指定事件
+// 参数 event: 事件标识
+// 参数 listener: 监听器函数
+// 如果监听器数量超过 maxListeners，会打印警告
+func (e *Emitter[T]) AddListener(event T, listener Listener[T]) *Emitter[T] {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
-// RemoveListener removes the listener argument from the event arguments slice
-// in the Emitter's events map.  If the reflect Value of the listener does not
-// have a Kind of Func then RemoveListener panics. If a RecoveryListener has
-// been set then it is called after recovering from the panic.
-func (emitter *Emitter) RemoveListener(event, listener interface{}) *Emitter {
-	emitter.Lock()
-	defer emitter.Unlock()
-
-	fn := reflect.ValueOf(listener)
-
-	if reflect.Func != fn.Kind() {
-		if nil == emitter.recoverer {
-			panic(ErrNoneFunction)
-		} else {
-			emitter.recoverer(event, listener, ErrNoneFunction)
-		}
+	if e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners {
+		fmt.Fprintf(os.Stdout, "Warning: event `%v` exceeds max listeners limit of %d\n", event, e.maxListeners)
 	}
 
-	if events, ok := emitter.events[event]; ok {
-		if _, ok = emitter.onces[fn]; ok {
-			fn = emitter.onces[fn]
+	e.events[event] = append(e.events[event], listener)
+	return e
+}
+
+// On 是 AddListener 的别名，便于链式调用
+func (e *Emitter[T]) On(event T, listener Listener[T]) *Emitter[T] {
+	return e.AddListener(event, listener)
+}
+
+// RemoveListener 从指定事件中移除监听器
+// 参数 event: 事件标识
+// 参数 listener: 要移除的监听器函数
+func (e *Emitter[T]) RemoveListener(event T, listener Listener[T]) *Emitter[T] {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if listeners, ok := e.events[event]; ok {
+		lPtr := &listener
+		if once, exists := e.onces[lPtr]; exists {
+			lPtr = once // 如果是 Once 包装的监听器，使用原始指针
 		}
 
-		newEvents := []reflect.Value{}
-
-		for _, listener := range events {
-			if fn.Pointer() != listener.Pointer() {
-				newEvents = append(newEvents, listener)
+		newListeners := make([]Listener[T], 0, len(listeners))
+		for _, l := range listeners {
+			if &l != lPtr {
+				newListeners = append(newListeners, l)
 			}
 		}
-
-		emitter.events[event] = newEvents
+		e.events[event] = newListeners
 	}
-
-	return emitter
+	return e
 }
 
-// Off is an alias for RemoveListener.
-func (emitter *Emitter) Off(event, listener interface{}) *Emitter {
-	return emitter.RemoveListener(event, listener)
+// Off 是 RemoveListener 的别名，便于链式调用
+func (e *Emitter[T]) Off(event T, listener Listener[T]) *Emitter[T] {
+	return e.RemoveListener(event, listener)
 }
 
-// Once generates a new function which invokes the supplied listener
-// only once before removing itself from the event's listener slice
-// in the Emitter's events map. If the reflect Value of the listener
-// does not have a Kind of Func then Once panics. If a RecoveryListener
-// has been set then it is called after recovering from the panic.
-func (emitter *Emitter) Once(event, listener interface{}) *Emitter {
-	fn := reflect.ValueOf(listener)
-
-	if reflect.Func != fn.Kind() {
-		if nil == emitter.recoverer {
-			panic(ErrNoneFunction)
-		} else {
-			emitter.recoverer(event, listener, ErrNoneFunction)
-		}
+// Once 添加一个只触发一次的监听器
+// 参数 event: 事件标识
+// 参数 listener: 监听器函数
+// 触发后自动移除
+func (e *Emitter[T]) Once(event T, listener Listener[T]) *Emitter[T] {
+	var once Listener[T]
+	once = func(args ...T) {
+		defer e.RemoveListener(event, once)
+		listener(args...)
 	}
 
-	var run func(...interface{})
+	lPtr := &listener
+	e.mu.Lock()
+	e.onces[lPtr] = &once
+	e.mu.Unlock()
 
-	run = func(arguments ...interface{}) {
-		defer emitter.RemoveListener(event, run)
-
-		var values []reflect.Value
-
-		for i := 0; i < len(arguments); i++ {
-			values = append(values, reflect.ValueOf(arguments[i]))
-		}
-
-		fn.Call(values)
-	}
-
-	// Lock before changing onces
-	emitter.Lock()
-	emitter.onces[fn] = reflect.ValueOf(run)
-	emitter.Unlock()
-
-	emitter.AddListener(event, run)
-	return emitter
+	return e.AddListener(event, once)
 }
 
-// Emit attempts to use the reflect package to Call each listener stored
-// in the Emitter's events map with the supplied arguments. Each listener
-// is called within its own go routine. The reflect package will panic if
-// the agruments supplied do not align the parameters of a listener function.
-// If a RecoveryListener has been set then it is called after recovering from
-// the panic.
-func (emitter *Emitter) Emit(event interface{}, arguments ...interface{}) *Emitter {
-	var (
-		listeners []reflect.Value
-		ok        bool
-	)
-
-	// Lock the mutex when reading from the Emitter's
-	// events map.
-	emitter.Lock()
-
-	if listeners, ok = emitter.events[event]; !ok {
-		// If the Emitter does not include the event in its
-		// event map, it has no listeners to Call yet.
-		emitter.Unlock()
-		return emitter
+// Emit 异步触发事件的所有监听器
+// 参数 event: 事件标识
+// 参数 args: 传递给监听器的参数
+func (e *Emitter[T]) Emit(event T, args ...T) *Emitter[T] {
+	e.mu.Lock()
+	listeners, ok := e.events[event]
+	if !ok {
+		e.mu.Unlock()
+		return e
 	}
-
-	// Unlock the mutex immediately following the read
-	// instead of deferring so that listeners registered
-	// with Once can aquire the mutex for removal.
-	emitter.Unlock()
+	listenersCopy := make([]Listener[T], len(listeners))
+	copy(listenersCopy, listeners)
+	e.mu.Unlock()
 
 	var wg sync.WaitGroup
+	wg.Add(len(listenersCopy))
 
-	wg.Add(len(listeners))
-
-	for _, fn := range listeners {
-		go func(fn reflect.Value) {
+	for _, listener := range listenersCopy {
+		go func(l Listener[T]) {
 			defer wg.Done()
-
-			// Recover from potential panics, supplying them to a
-			// RecoveryListener if one has been set, else allowing
-			// the panic to occur.
-			if nil != emitter.recoverer {
-				defer func() {
-					if r := recover(); nil != r {
-						err := fmt.Errorf("%v", r)
-						emitter.recoverer(event, fn.Interface(), err)
-					}
-				}()
-			}
-
-			var values []reflect.Value
-
-			for i := 0; i < len(arguments); i++ {
-				if arguments[i] == nil {
-					values = append(values, reflect.New(fn.Type().In(i)).Elem())
-				} else {
-					values = append(values, reflect.ValueOf(arguments[i]))
-				}
-			}
-
-			fn.Call(values)
-		}(fn)
+			e.callListener(event, l, args...)
+		}(listener)
 	}
 
 	wg.Wait()
-	return emitter
+	return e
 }
 
-// EmitSync attempts to use the reflect package to Call each listener stored
-// in the Emitter's events map with the supplied arguments. Each listener
-// is called synchronously. The reflect package will panic if
-// the agruments supplied do not align the parameters of a listener function.
-// If a RecoveryListener has been set then it is called after recovering from
-// the panic.
-func (emitter *Emitter) EmitSync(event interface{}, arguments ...interface{}) *Emitter {
-	var (
-		listeners []reflect.Value
-		ok        bool
-	)
-
-	// Lock the mutex when reading from the Emitter's
-	// events map.
-	emitter.Lock()
-
-	if listeners, ok = emitter.events[event]; !ok {
-		// If the Emitter does not include the event in its
-		// event map, it has no listeners to Call yet.
-		emitter.Unlock()
-		return emitter
+// EmitSync 同步触发事件的所有监听器
+// 参数 event: 事件标识
+// 参数 args: 传递给监听器的参数
+func (e *Emitter[T]) EmitSync(event T, args ...T) *Emitter[T] {
+	e.mu.Lock()
+	listeners, ok := e.events[event]
+	if !ok {
+		e.mu.Unlock()
+		return e
 	}
+	listenersCopy := make([]Listener[T], len(listeners))
+	copy(listenersCopy, listeners)
+	e.mu.Unlock()
 
-	// Unlock the mutex immediately following the read
-	// instead of deferring so that listeners registered
-	// with Once can aquire the mutex for removal.
-	emitter.Unlock()
+	for _, listener := range listenersCopy {
+		e.callListener(event, listener, args...)
+	}
+	return e
+}
 
-	for _, fn := range listeners {
-		// Recover from potential panics, supplying them to a
-		// RecoveryListener if one has been set, else allowing
-		// the panic to occur.
-		if nil != emitter.recoverer {
-			defer func() {
-				if r := recover(); nil != r {
-					err := fmt.Errorf("%v", r)
-					emitter.recoverer(event, fn.Interface(), err)
-				}
-			}()
-		}
-
-		var values []reflect.Value
-
-		for i := 0; i < len(arguments); i++ {
-			if arguments[i] == nil {
-				values = append(values, reflect.New(fn.Type().In(i)).Elem())
-			} else {
-				values = append(values, reflect.ValueOf(arguments[i]))
+// callListener 调用监听器并处理可能的 panic
+func (e *Emitter[T]) callListener(event T, listener Listener[T], args ...T) {
+	if e.recoverer != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				err := fmt.Errorf("panic occurred in listener: %v", r)
+				e.recoverer(event, listener, err)
 			}
-		}
-
-		fn.Call(values)
+		}()
 	}
-
-	return emitter
+	listener(args...)
 }
 
-// RecoverWith sets the listener to call when a panic occurs, recovering from
-// panics and attempting to keep the application from crashing.
-func (emitter *Emitter) RecoverWith(listener RecoveryListener) *Emitter {
-	emitter.recoverer = listener
-	return emitter
+// RecoverWith 设置恢复监听器，用于处理 panic
+// 参数 listener: 恢复监听器函数
+func (e *Emitter[T]) RecoverWith(listener RecoveryListener[T]) *Emitter[T] {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recoverer = listener
+	return e
 }
 
-// SetMaxListeners sets the maximum number of listeners per
-// event for the Emitter. If -1 is passed as the maximum,
-// all events may have unlimited listeners. By default, each
-// event can have a maximum number of 10 listeners which is
-// useful for finding memory leaks.
-func (emitter *Emitter) SetMaxListeners(max int) *Emitter {
-	emitter.Lock()
-	defer emitter.Unlock()
-
-	emitter.maxListeners = max
-	return emitter
+// SetMaxListeners 设置每个事件的最大监听器数量
+// 参数 max: 最大数量，若为 -1 则无限制
+func (e *Emitter[T]) SetMaxListeners(max int) *Emitter[T] {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.maxListeners = max
+	return e
 }
 
-// GetListenerCount gets count of listeners for a given event.
-func (emitter *Emitter) GetListenerCount(event interface{}) (count int) {
-	emitter.Lock()
-	if listeners, ok := emitter.events[event]; ok {
-		count = len(listeners)
-	}
-	emitter.Unlock()
-	return
-}
-
-// NewEmitter returns a new Emitter object, defaulting the
-// number of maximum listeners per event to the DefaultMaxListeners
-// constant and initializing its events map.
-func NewEmitter() (emitter *Emitter) {
-	emitter = new(Emitter)
-	emitter.Mutex = new(sync.Mutex)
-	emitter.events = make(map[interface{}][]reflect.Value)
-	emitter.maxListeners = DefaultMaxListeners
-	emitter.onces = make(map[reflect.Value]reflect.Value)
-	return
+// GetListenerCount 获取指定事件的监听器数量
+// 参数 event: 事件标识
+func (e *Emitter[T]) GetListenerCount(event T) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.events[event])
 }

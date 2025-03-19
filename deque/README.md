@@ -1,82 +1,112 @@
-# deque
+# Deque - A Generic Double-Ended Queue in Go
 
-[![GoDoc](https://pkg.go.dev/badge/github.com/gammazero/deque)](https://pkg.go.dev/github.com/gammazero/deque)
-[![Build Status](https://github.com/gammazero/deque/actions/workflows/go.yml/badge.svg)](https://github.com/gammazero/deque/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gammazero/deque)](https://goreportcard.com/report/github.com/gammazero/deque)
-[![codecov](https://codecov.io/gh/gammazero/deque/branch/master/graph/badge.svg)](https://codecov.io/gh/gammazero/deque)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+English | [简体中文](README_zh.md)
 
-Fast ring-buffer deque ([double-ended queue](https://en.wikipedia.org/wiki/Double-ended_queue)) implementation.
+`deque` is a high-performance generic double-ended queue (Deque) implementation in Go, designed to efficiently add and remove elements from both ends. It is built on a circular buffer, with capacity dynamically adjusted in powers of 2, and supports a variety of operations such as insertion, removal, rotation, and searching.
 
-For a pictorial description, see the [Deque diagram](https://github.com/gammazero/deque/wiki)
+## Features
+
+- **Generic Support**: Works with any type (Go 1.18+).
+- **Efficient Operations**: Adding and removing elements at both ends has O(1) time complexity.
+- **Dynamic Resizing**: Capacity expands or shrinks as needed, always maintaining a power of 2.
+- **Rich Functionality**: Includes rotation, searching, insertion, and removal operations.
+- **Safety Design**: Operations on an empty queue or invalid indices trigger a panic.
 
 ## Installation
 
-```
-$ go get github.com/gammazero/deque
-```
+Add the package to your Go project:
 
-## Deque data structure
-
-Deque generalizes a queue and a stack, to efficiently add and remove items at either end with O(1) performance. [Queue](<https://en.wikipedia.org/wiki/Queue_(abstract_data_type)>) (FIFO) operations are supported using `PushBack` and `PopFront`. [Stack](<https://en.wikipedia.org/wiki/Stack_(abstract_data_type)>) (LIFO) operations are supported using `PushBack` and `PopBack`.
-
-## Ring-buffer Performance
-
-This deque implementation is optimized for CPU and GC performance. The circular buffer automatically re-sizes by powers of two, growing when additional capacity is needed and shrinking when only a quarter of the capacity is used, and uses bitwise arithmetic for all calculations. Since growth is by powers of two, adding elements will only cause O(log n) allocations. A minimum capacity can be set so that there is no resizing at or below that specified amount.
-
-The ring-buffer implementation improves memory and time performance with fewer GC pauses, compared to implementations based on slices and linked lists. By wrapping around the buffer, previously used space is reused, making allocation unnecessary until all buffer capacity is used. If the deque is only filled and then completely emptied before being filled again, then the ring structure offers little benefit for memory reuse over a slice.
-
-For maximum speed, this deque implementation leaves concurrency safety up to the application to provide, however the application chooses, if needed at all.
-
-## Reading Empty Deque
-
-Since it is OK for the deque to contain a `nil` value, it is necessary to either panic or return a second boolean value to indicate the deque is empty, when reading or removing an element. This deque panics when reading from an empty deque. This is a run-time check to help catch programming errors, which may be missed if a second return value is ignored. Simply check `Deque.Len()` before reading from the deque.
-
-## Generics
-
-Deque uses generics to create a Deque that contains items of the type specified. To create a Deque that holds a specific type, provide a type argument to New or with the variable declaration. For example:
-
-```go
-    stringDeque := deque.New[string]()
-    var intDeque deque.Deque[int]
+```bash
+go get github.com/wsshow/op/deque
 ```
 
-## Example
+## Usage Example
+
+Here are some basic usage examples:
 
 ```go
 package main
 
 import (
     "fmt"
-    "github.com/gammazero/deque"
+    "github.com/wsshow/op/deque"
 )
 
 func main() {
-    var q deque.Deque[string]
-    q.PushBack("foo")
-    q.PushBack("bar")
-    q.PushBack("baz")
+    // Create a new double-ended queue
+    d := deque.New[int]()
 
-    fmt.Println(q.Len())   // Prints: 3
-    fmt.Println(q.Front()) // Prints: foo
-    fmt.Println(q.Back())  // Prints: baz
+    // Add elements to the back
+    d.PushBack(1)
+    d.PushBack(2)
+    d.PushBack(3)
+    fmt.Println("Size:", d.Size()) // Output: Size: 3
 
-    q.PopFront() // remove "foo"
-    q.PopBack()  // remove "baz"
+    // Add an element to the front
+    d.PushFront(0)
+    fmt.Println("Front:", d.Front()) // Output: Front: 0
+    fmt.Println("Back:", d.Back())   // Output: Back: 3
 
-    q.PushFront("hello")
-    q.PushBack("world")
+    // Access element at a specific index
+    fmt.Println("At 1:", d.At(1)) // Output: At 1: 1
 
-    // Consume deque and print elements.
-    for q.Len() != 0 {
-        fmt.Println(q.PopFront())
-    }
+    // Remove elements
+    front := d.PopFront()
+    back := d.PopBack()
+    fmt.Println("Popped Front:", front) // Output: Popped Front: 0
+    fmt.Println("Popped Back:", back)   // Output: Popped Back: 3
+
+    // Rotate the queue
+    d.PushBack(4)
+    d.Rotate(1) // Rotate forward by 1 step
+    fmt.Println("After Rotate:", d.At(0)) // Output: After Rotate: 2
+
+    // Search for an element
+    idx := d.Index(func(x int) bool { return x > 1 })
+    fmt.Println("Index of >1:", idx) // Output: Index of >1: 1
 }
 ```
 
-## Uses
+## API Overview
 
-Deque can be used as both a:
+### Creation and Initialization
 
-- [Queue](<https://en.wikipedia.org/wiki/Queue_(abstract_data_type)>) using `PushBack` and `PopFront`
-- [Stack](<https://en.wikipedia.org/wiki/Stack_(abstract_data_type)>) using `PushBack` and `PopBack`
+- `New[T]() *Deque[T]`: Creates a new double-ended queue instance.
+
+### Basic Operations
+
+- `PushBack(elem T)`: Adds an element to the back of the queue.
+- `PushFront(elem T)`: Adds an element to the front of the queue.
+- `PopFront() T`: Removes and returns the element from the front.
+- `PopBack() T`: Removes and returns the element from the back.
+- `Front() T`: Returns the element at the front.
+- `Back() T`: Returns the element at the back.
+
+### Capacity Management
+
+- `Capacity() int`: Returns the current capacity of the queue.
+- `Size() int`: Returns the current number of elements.
+- `Grow(n int)`: Ensures space for at least n additional elements.
+- `SetBaseCap(baseCap int)`: Sets the base capacity.
+
+### Additional Operations
+
+- `At(index int) T`: Retrieves the element at the specified index.
+- `Set(index int, item T)`: Sets the value at the specified index.
+- `Insert(at int, item T)`: Inserts an element at the specified position.
+- `Remove(at int) T`: Removes and returns the element at the specified index.
+- `Rotate(steps int)`: Rotates the queue by the specified number of steps.
+- `Index(match func(T) bool) int`: Searches for the first element satisfying the condition from the front.
+- `RIndex(match func(T) bool) int`: Searches for the first element satisfying the condition from the back.
+- `Swap(idxA, idxB int)`: Swaps the elements at the specified indices.
+- `Clear()`: Clears the queue while retaining its capacity.
+
+## Notes
+
+- Operations like `PopFront`, `Front`, etc., will panic if called on an empty queue.
+- Middle insertions (`Insert`) and removals (`Remove`) have O(n) time complexity and are not suitable for frequent use.
+- During capacity adjustments, the queue size is always maintained as a power of 2.
+
+## Reference
+
+This implementation is inspired by [gammazero/deque](https://github.com/gammazero/deque).

@@ -1,47 +1,88 @@
 package generator
 
+import "sync"
+
+// Yield 用于在生成器中产生值并接收返回值
 type Yield[T any] struct {
-	value  chan T
-	result chan any
+	valueChan  chan T   // 用于发送生成的值
+	resultChan chan any // 用于接收调用者传递的返回值
 }
 
-func (y *Yield[T]) Yield(value T) (result any) {
-	y.value <- value
+// Yield 将值发送给调用者，并尝试接收返回值
+// 如果没有返回值，则返回 nil
+func (y *Yield[T]) Yield(value T) any {
+	y.valueChan <- value
 	select {
-	case result = <-y.result:
+	case result := <-y.resultChan:
+		return result
 	default:
+		return nil // 如果没有返回值可用，返回 nil
 	}
-	return
 }
 
+// Generator 是一个泛型生成器，支持迭代生成值
 type Generator[T any] struct {
-	done chan bool
-	y    Yield[T]
+	yield     Yield[T]  // 用于值传递的 Yield 实例
+	doneChan  chan bool // 标记生成器是否完成
+	isDone    bool      // 内部状态，标记是否已完成
+	closeOnce sync.Once // 确保通道只关闭一次
 }
 
+// NewGenerator 创建并启动一个新的生成器
+// genFunc 是生成逻辑，接收 Yield[T] 用于产生值
 func NewGenerator[T any](genFunc func(yield Yield[T])) *Generator[T] {
 	g := &Generator[T]{
-		y:    Yield[T]{value: make(chan T), result: make(chan any)},
-		done: make(chan bool),
+		yield:    Yield[T]{valueChan: make(chan T), resultChan: make(chan any)},
+		doneChan: make(chan bool),
 	}
-	go g.run(genFunc)
+	go g.run(genFunc) // 在 goroutine 中运行生成逻辑
 	return g
 }
 
-func (g *Generator[T]) run(f func(yield Yield[T])) {
-	f(g.y)
-	close(g.y.value)
-	close(g.done)
+// run 执行生成器的核心逻辑
+// 在生成完成后关闭通道
+func (g *Generator[T]) run(genFunc func(yield Yield[T])) {
+	defer g.close() // 确保在函数退出时关闭通道
+	genFunc(g.yield)
 }
 
+// close 安全地关闭生成器的通道
+func (g *Generator[T]) close() {
+	g.closeOnce.Do(func() {
+		close(g.yield.valueChan)
+		close(g.yield.resultChan)
+		close(g.doneChan)
+		g.isDone = true
+	})
+}
+
+// Next 获取生成器的下一个值
+// values 可选参数，用于向生成器传递返回值
+// 返回值：生成的 value 和 done 状态（true 表示生成结束）
 func (g *Generator[T]) Next(values ...any) (value T, done bool) {
-	if len(values) > 0 {
-		g.y.result <- values[0]
+	if g.isDone {
+		return value, true // 如果已完成，直接返回
 	}
+
+	// 如果提供了返回值，发送到 resultChan
+	if len(values) > 0 {
+		select {
+		case g.yield.resultChan <- values[0]:
+		case <-g.doneChan:
+			return value, true // 生成器已关闭
+		}
+	}
+
+	// 等待生成的下一个值或完成信号
 	select {
-	case value, ok := <-g.y.value:
-		return value, !ok
-	case <-g.done:
-		return value, true
+	case val, ok := <-g.yield.valueChan:
+		if !ok {
+			g.isDone = true
+			return value, true // 通道关闭，表示生成结束
+		}
+		return val, false
+	case <-g.doneChan:
+		g.isDone = true
+		return value, true // 生成器完成
 	}
 }

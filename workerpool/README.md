@@ -1,53 +1,96 @@
-# workerpool
+# WorkerPool - A Generic Worker Pool in Go
 
-[![GoDoc](https://pkg.go.dev/badge/github.com/gammazero/workerpool)](https://pkg.go.dev/github.com/gammazero/workerpool)
-[![Build Status](https://github.com/gammazero/workerpool/actions/workflows/go.yml/badge.svg)](https://github.com/gammazero/workerpool/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gammazero/workerpool)](https://goreportcard.com/report/github.com/gammazero/workerpool)
-[![codecov](https://codecov.io/gh/gammazero/workerpool/branch/master/graph/badge.svg)](https://codecov.io/gh/gammazero/workerpool)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gammazero/workerpool/blob/master/LICENSE)
+English | [简体中文](README_zh.md)
 
-Concurrency limiting goroutine pool. Limits the concurrency of task execution, not the number of tasks queued. Never blocks submitting tasks, no matter how many tasks are queued.
+`workerpool` is a high-performance worker pool implementation in Go, designed to limit the number of goroutines concurrently executing tasks. It leverages channels and dynamic worker management, supporting task submission, pausing, stopping, and waiting queue management. When no tasks arrive, workers are gradually stopped to conserve resources.
 
-This implementation builds on ideas from the following:
+## Features
 
-- http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang
-- http://nesv.github.io/golang/2014/02/25/worker-queues-in-go.html
+- **Concurrency Control**: Limits the maximum number of concurrent workers, ensuring manageable resource usage.
+- **Dynamic Adjustment**: Creates or terminates workers dynamically based on task load.
+- **Task Queue**: Supports a waiting queue for tasks when all workers are busy.
+- **Pause and Stop**: Allows pausing all workers or stopping the pool, with an option to wait for queued tasks to complete.
+- **Efficient Design**: Non-blocking task submission, with idle workers automatically shut down after a timeout.
 
 ## Installation
 
-To install this package, you need to setup your Go workspace. The simplest way to install the library is to run:
+Add the package to your Go project:
 
-```
-$ go get github.com/gammazero/workerpool
+```bash
+go get github.com/wsshow/op/workerpool
 ```
 
-## Example
+## Usage Example
+
+Here are some basic usage examples:
 
 ```go
 package main
 
 import (
-	"fmt"
-	"github.com/gammazero/workerpool"
+    "fmt"
+    "time"
+    "github.com/wsshow/op/workerpool"
 )
 
 func main() {
-	wp := workerpool.New(2)
-	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+    // Create a worker pool with a maximum of 2 concurrent workers
+    pool := workerpool.New(2)
 
-	for _, r := range requests {
-		r := r
-		wp.Submit(func() {
-			fmt.Println("Handling request:", r)
-		})
-	}
+    // Submit asynchronous tasks
+    for i := 0; i < 5; i++ {
+        i := i
+        pool.Submit(func() {
+            time.Sleep(100 * time.Millisecond)
+            fmt.Printf("Task %d completed\n", i)
+        })
+    }
 
-	wp.StopWait()
+    // Submit a synchronous task and wait for completion
+    pool.SubmitWait(func() {
+        time.Sleep(50 * time.Millisecond)
+        fmt.Println("Synchronous task completed")
+    })
+
+    // Pause the worker pool for 1 second
+    ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+    defer cancel()
+    pool.Pause(ctx)
+    fmt.Println("Pool paused for 1 second")
+
+    // Stop the worker pool and wait for all tasks to complete
+    pool.StopWait()
+    fmt.Println("Pool stopped, all tasks completed")
 }
 ```
 
-[Example wrapper function](https://go.dev/play/p/BWnRhJYarZ1) to show start and finish time of submitted function.
+## API Overview
 
-## Usage Note
+### Creation and Initialization
 
-There is no upper limit on the number of tasks queued, other than the limits of system resources. If the number of inbound tasks is too many to even queue for pending processing, then the solution is outside the scope of workerpool. It should be solved by distributing workload over multiple systems, and/or storing input for pending processing in intermediate storage such as a file system, distributed message queue, etc.
+- `New(maxWorkers int) *WorkerPool`: Creates a new worker pool with the specified maximum number of concurrent workers.
+
+### Basic Operations
+
+- `Submit(task func())`: Submits an asynchronous task to the worker pool.
+- `SubmitWait(task func())`: Submits a task and waits for its execution to complete.
+- `Size() int`: Returns the maximum number of concurrent workers.
+- `WaitingQueueSize() int`: Returns the number of tasks in the waiting queue.
+
+### Lifecycle Management
+
+- `Stop()`: Stops the worker pool, completing only currently running tasks and abandoning pending ones.
+- `StopWait()`: Stops the worker pool and waits for all queued tasks to complete.
+- `Stopped() bool`: Returns whether the worker pool has been stopped.
+- `Pause(ctx context.Context)`: Pauses all workers until the Context is canceled or times out.
+
+## Notes
+
+- Submitting tasks after calling `Stop` or `StopWait` may cause a panic.
+- During a `Pause`, tasks continue to queue but are not executed until the pause is lifted.
+- Idle workers are automatically shut down after 2 seconds (`idleTimeout`) of inactivity.
+- Task functions must capture external values via closures, and return values should be sent over channels.
+
+## Reference
+
+This implementation is inspired by [gammazero/workerpool](https://github.com/gammazero/workerpool).

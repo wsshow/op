@@ -10,202 +10,148 @@ import (
 )
 
 const (
-	// If workes idle for at least this period of time, then stop a worker.
+	// 如果工作协程空闲超过此时间，则停止一个工作协程
 	idleTimeout = 2 * time.Second
 )
 
-// New creates and starts a pool of worker goroutines.
+// WorkerPool 是一个工作协程池，限制并发执行任务的协程数量不超过指定最大值
+type WorkerPool struct {
+	maxWorkers   int                 // 最大工作协程数
+	taskChan     chan func()         // 任务通道
+	workerChan   chan func()         // 工作协程通道
+	stopSignal   chan struct{}       // 停止信号通道
+	stoppedChan  chan struct{}       // 停止完成通道
+	waitingQueue deque.Deque[func()] // 等待任务队列
+	stopMutex    sync.Mutex          // 停止操作互斥锁
+	stopOnce     sync.Once           // 确保停止只执行一次
+	isStopped    bool                // 是否已停止
+	waitingCount int32               // 等待队列中的任务数
+	waitAll      bool                // 是否等待所有任务完成
+}
+
+// New 创建并启动一个工作协程池
 //
-// The maxWorkers parameter specifies the maximum number of workers that can
-// execute tasks concurrently. When there are no incoming tasks, workers are
-// gradually stopped until there are no remaining workers.
+// maxWorkers 指定最大并发工作协程数。若无任务到来，工作协程会逐渐停止直到没有剩余工作协程
 func New(maxWorkers int) *WorkerPool {
-	// There must be at least one worker.
 	if maxWorkers < 1 {
-		maxWorkers = 1
+		maxWorkers = 1 // 确保至少有一个工作协程
 	}
 
 	pool := &WorkerPool{
 		maxWorkers:  maxWorkers,
-		taskQueue:   make(chan func()),
-		workerQueue: make(chan func()),
+		taskChan:    make(chan func()),
+		workerChan:  make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
 	}
 
-	// Start the task dispatcher.
+	// 启动任务分发器
 	go pool.dispatch()
 
 	return pool
 }
 
-// WorkerPool is a collection of goroutines, where the number of concurrent
-// goroutines processing requests does not exceed the specified maximum.
-type WorkerPool struct {
-	maxWorkers   int
-	taskQueue    chan func()
-	workerQueue  chan func()
-	stoppedChan  chan struct{}
-	stopSignal   chan struct{}
-	waitingQueue deque.Deque[func()]
-	stopLock     sync.Mutex
-	stopOnce     sync.Once
-	stopped      bool
-	waiting      int32
-	wait         bool
-}
-
-// Size returns the maximum number of concurrent workers.
+// Size 返回最大并发工作协程数
 func (p *WorkerPool) Size() int {
 	return p.maxWorkers
 }
 
-// Stop stops the worker pool and waits for only currently running tasks to
-// complete. Pending tasks that are not currently running are abandoned. Tasks
-// must not be submitted to the worker pool after calling stop.
-//
-// Since creating the worker pool starts at least one goroutine, for the
-// dispatcher, Stop() or StopWait() should be called when the worker pool is no
-// longer needed.
+// Stop 停止工作协程池，仅等待当前运行任务完成，未运行的待处理任务将被放弃
+// 调用后不得再次提交任务
 func (p *WorkerPool) Stop() {
 	p.stop(false)
 }
 
-// StopWait stops the worker pool and waits for all queued tasks tasks to
-// complete. No additional tasks may be submitted, but all pending tasks are
-// executed by workers before this function returns.
+// StopWait 停止工作协程池，并等待所有排队任务完成
+// 调用后不得再次提交任务，所有待处理任务将在函数返回前执行完毕
 func (p *WorkerPool) StopWait() {
 	p.stop(true)
 }
 
-// Stopped returns true if this worker pool has been stopped.
+// Stopped 返回工作协程池是否已停止
 func (p *WorkerPool) Stopped() bool {
-	p.stopLock.Lock()
-	defer p.stopLock.Unlock()
-	return p.stopped
+	p.stopMutex.Lock()
+	defer p.stopMutex.Unlock()
+	return p.isStopped
 }
 
-// Submit enqueues a function for a worker to execute.
+// Submit 将任务加入队列，由工作协程执行
 //
-// Any external values needed by the task function must be captured in a
-// closure. Any return values should be returned over a channel that is
-// captured in the task function closure.
-//
-// Submit will not block regardless of the number of tasks submitted. Each task
-// is immediately given to an available worker or to a newly started worker. If
-// there are no available workers, and the maximum number of workers are
-// already created, then the task is put onto a waiting queue.
-//
-// When there are tasks on the waiting queue, any additional new tasks are put
-// on the waiting queue. Tasks are removed from the waiting queue as workers
-// become available.
-//
-// As long as no new tasks arrive, one available worker is shutdown each time
-// period until there are no more idle workers. Since the time to start new
-// goroutines is not significant, there is no need to retain idle workers
-// indefinitely.
+// 任务函数需通过闭包捕获外部值，返回值应通过闭包中的通道返回。
+// Submit 不会阻塞，无论提交多少任务，新任务会立即分配给可用工作协程或加入等待队列。
 func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
-		p.taskQueue <- task
+		p.taskChan <- task
 	}
 }
 
-// SubmitWait enqueues the given function and waits for it to be executed.
+// SubmitWait 将任务加入队列并等待其执行完成
 func (p *WorkerPool) SubmitWait(task func()) {
 	if task == nil {
 		return
 	}
 	doneChan := make(chan struct{})
-	p.taskQueue <- func() {
+	p.taskChan <- func() {
+		defer close(doneChan)
 		task()
-		close(doneChan)
 	}
 	<-doneChan
 }
 
-// WaitingQueueSize returns the count of tasks in the waiting queue.
+// WaitingQueueSize 返回等待队列中的任务数
 func (p *WorkerPool) WaitingQueueSize() int {
-	return int(atomic.LoadInt32(&p.waiting))
+	return int(atomic.LoadInt32(&p.waitingCount))
 }
 
-// Pause causes all workers to wait on the given Context, thereby making them
-// unavailable to run tasks. Pause returns when all workers are waiting. Tasks
-// can continue to be queued to the workerpool, but are not executed until the
-// Context is canceled or times out.
-//
-// Calling Pause when the worker pool is already paused causes Pause to wait
-// until all previous pauses are canceled. This allows a goroutine to take
-// control of pausing and unpausing the pool as soon as other goroutines have
-// unpaused it.
-//
-// When the workerpool is stopped, workers are unpaused and queued tasks are
-// executed during StopWait.
+// Pause 使所有工作协程根据给定的 Context 暂停，暂停期间不执行任务
+// 返回时所有工作协程已暂停。任务可继续排队，但需等待 Context 取消或超时后执行。
+// 若协程池已暂停，则等待前次暂停取消后重新控制暂停状态。
 func (p *WorkerPool) Pause(ctx context.Context) {
-	p.stopLock.Lock()
-	defer p.stopLock.Unlock()
-	if p.stopped {
+	p.stopMutex.Lock()
+	defer p.stopMutex.Unlock()
+	if p.isStopped {
 		return
 	}
-	ready := new(sync.WaitGroup)
-	ready.Add(p.maxWorkers)
+
+	readyWG := new(sync.WaitGroup)
+	readyWG.Add(p.maxWorkers)
 	for i := 0; i < p.maxWorkers; i++ {
 		p.Submit(func() {
-			ready.Done()
+			readyWG.Done()
 			select {
 			case <-ctx.Done():
 			case <-p.stopSignal:
 			}
 		})
 	}
-	// Wait for workers to all be paused
-	ready.Wait()
+	readyWG.Wait() // 等待所有工作协程暂停
 }
 
-// dispatch sends the next queued task to an available worker.
+// dispatch 分发任务给可用工作协程
 func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(idleTimeout)
-	var workerCount int
-	var idle bool
+	workerCount := 0
+	idle := false
 	var wg sync.WaitGroup
 
-Loop:
 	for {
-		// As long as tasks are in the waiting queue, incoming tasks are put
-		// into the waiting queue and tasks to run are taken from the waiting
-		// queue. Once the waiting queue is empty, then go back to submitting
-		// incoming tasks directly to available workers.
-		if p.waitingQueue.Len() != 0 {
+		// 处理等待队列中的任务
+		if p.waitingQueue.Size() > 0 {
 			if !p.processWaitingQueue() {
-				break Loop
+				break
 			}
 			continue
 		}
 
 		select {
-		case task, ok := <-p.taskQueue:
+		case task, ok := <-p.taskChan:
 			if !ok {
-				break Loop
+				break
 			}
-			// Got a task to do.
-			select {
-			case p.workerQueue <- task:
-			default:
-				// Create a new worker, if not at max.
-				if workerCount < p.maxWorkers {
-					wg.Add(1)
-					go worker(task, p.workerQueue, &wg)
-					workerCount++
-				} else {
-					// Enqueue task to be executed by next available worker.
-					p.waitingQueue.PushBack(task)
-					atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
-				}
-			}
+			p.handleTask(task, &workerCount, &wg)
 			idle = false
 		case <-timeout.C:
-			// Timed out waiting for work to arrive. Kill a ready worker if
-			// pool has been idle for a whole timeout.
 			if idle && workerCount > 0 {
 				if p.killIdleWorker() {
 					workerCount--
@@ -216,86 +162,95 @@ Loop:
 		}
 	}
 
-	// If instructed to wait, then run tasks that are already queued.
-	if p.wait {
+	// 如果需要等待，则运行所有排队任务
+	if p.waitAll {
 		p.runQueuedTasks()
 	}
 
-	// Stop all remaining workers as they become ready.
-	for workerCount > 0 {
-		p.workerQueue <- nil
-		workerCount--
-	}
-	wg.Wait()
-
+	// 停止所有剩余工作协程
+	p.shutdownWorkers(workerCount, &wg)
 	timeout.Stop()
 }
 
-// worker executes tasks and stops when it receives a nil task.
-func worker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
+// handleTask 处理单个任务，分配给工作协程或加入等待队列
+func (p *WorkerPool) handleTask(task func(), workerCount *int, wg *sync.WaitGroup) {
+	select {
+	case p.workerChan <- task:
+		// 任务直接分配给可用工作协程
+	default:
+		if *workerCount < p.maxWorkers {
+			// 创建新工作协程
+			wg.Add(1)
+			go worker(task, p.workerChan, wg)
+			*workerCount++
+		} else {
+			// 加入等待队列
+			p.waitingQueue.PushBack(task)
+			atomic.StoreInt32(&p.waitingCount, int32(p.waitingQueue.Size()))
+		}
+	}
+}
+
+// worker 执行任务，直到收到 nil 任务时停止
+func worker(task func(), workerChan chan func(), wg *sync.WaitGroup) {
 	for task != nil {
 		task()
-		task = <-workerQueue
+		task = <-workerChan
 	}
 	wg.Done()
 }
 
-// stop tells the dispatcher to exit, and whether or not to complete queued
-// tasks.
+// stop 停止协程池，wait 参数决定是否完成排队任务
 func (p *WorkerPool) stop(wait bool) {
 	p.stopOnce.Do(func() {
-		// Signal that workerpool is stopping, to unpause any paused workers.
-		close(p.stopSignal)
-		// Acquire stopLock to wait for any pause in progress to complete. All
-		// in-progress pauses will complete because the stopSignal unpauses the
-		// workers.
-		p.stopLock.Lock()
-		// The stopped flag prevents any additional paused workers. This makes
-		// it safe to close the taskQueue.
-		p.stopped = true
-		p.stopLock.Unlock()
-		p.wait = wait
-		// Close task queue and wait for currently running tasks to finish.
-		close(p.taskQueue)
+		close(p.stopSignal) // 发送停止信号以解除暂停
+		p.stopMutex.Lock()
+		p.isStopped = true
+		p.waitAll = wait
+		p.stopMutex.Unlock()
+		close(p.taskChan) // 关闭任务通道
 	})
-	<-p.stoppedChan
+	<-p.stoppedChan // 等待停止完成
 }
 
-// processWaitingQueue puts new tasks onto the the waiting queue, and removes
-// tasks from the waiting queue as workers become available. Returns false if
-// worker pool is stopped.
+// processWaitingQueue 处理等待队列中的任务，返回 false 表示协程池已停止
 func (p *WorkerPool) processWaitingQueue() bool {
 	select {
-	case task, ok := <-p.taskQueue:
+	case task, ok := <-p.taskChan:
 		if !ok {
 			return false
 		}
 		p.waitingQueue.PushBack(task)
-	case p.workerQueue <- p.waitingQueue.Front():
-		// A worker was ready, so gave task to worker.
+	case p.workerChan <- p.waitingQueue.Front():
 		p.waitingQueue.PopFront()
 	}
-	atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
+	atomic.StoreInt32(&p.waitingCount, int32(p.waitingQueue.Size()))
 	return true
 }
 
+// killIdleWorker 杀死一个空闲工作协程，返回是否成功
 func (p *WorkerPool) killIdleWorker() bool {
 	select {
-	case p.workerQueue <- nil:
-		// Sent kill signal to worker.
+	case p.workerChan <- nil:
 		return true
 	default:
-		// No ready workers. All, if any, workers are busy.
 		return false
 	}
 }
 
-// runQueuedTasks removes each task from the waiting queue and gives it to
-// workers until queue is empty.
+// runQueuedTasks 执行所有等待队列中的任务
 func (p *WorkerPool) runQueuedTasks() {
-	for p.waitingQueue.Len() != 0 {
-		// A worker is ready, so give task to worker.
-		p.workerQueue <- p.waitingQueue.PopFront()
-		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
+	for p.waitingQueue.Size() > 0 {
+		p.workerChan <- p.waitingQueue.PopFront()
+		atomic.StoreInt32(&p.waitingCount, int32(p.waitingQueue.Size()))
 	}
+}
+
+// shutdownWorkers 停止所有剩余工作协程
+func (p *WorkerPool) shutdownWorkers(workerCount int, wg *sync.WaitGroup) {
+	for workerCount > 0 {
+		p.workerChan <- nil
+		workerCount--
+	}
+	wg.Wait()
 }
