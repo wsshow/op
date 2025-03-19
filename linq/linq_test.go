@@ -41,12 +41,14 @@ func TestSort(t *testing.T) {
 	}
 }
 
-// TestWithComparer 测试设置比较函数
+// TestWithComparer 测试设置比较函数// TestWithComparer 测试设置比较函数
 func TestWithComparer(t *testing.T) {
 	compare := func(a, b int) int { return a - b }
 	l := From([]int{1, 2}).WithComparer(compare)
-	if l.compare == nil || l.compare(1, 2) != -1 {
-		t.Errorf("WithComparer should set compare function, got %v", l.compare)
+
+	// 验证比较函数是否设置正确
+	if l.compare == nil || l.compare(1, 2) != -1 || l.compare(2, 1) != 1 || l.compare(1, 1) != 0 {
+		t.Errorf("WithComparer failed to set valid compare function")
 	}
 }
 
