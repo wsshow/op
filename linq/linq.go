@@ -169,9 +169,9 @@ func Join[T, U, K comparable, R any](outer Linq[T], inner Linq[U],
 
 // Concat 合并两个 Linq 数据集
 func (l Linq[T]) Concat(other Linq[T]) Linq[T] {
-	data := make([]T, len(l.data)+len(other.data))
-	copy(data, l.data)
-	copy(data[len(l.data):], other.data)
+	data := make([]T, 0, len(l.data)+len(other.data))
+	data = append(data, l.data...)
+	data = append(data, other.data...)
 	return Linq[T]{data: data, compare: l.compare}
 }
 
