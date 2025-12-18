@@ -19,23 +19,32 @@ type RecoveryListener[T comparable] func(event T, listener interface{}, err erro
 // Listener 定义监听器函数的签名，接受泛型参数
 type Listener[T comparable] func(args ...T)
 
+// listenerWrapper 包装监听器并添加唯一标识
+type listenerWrapper[T comparable] struct {
+	id       uint64      // 唯一标识符
+	listener Listener[T] // 实际的监听器函数
+	isOnce   bool        // 是否为 Once 监听器
+}
+
 // Emitter 是一个泛型事件发射器，用于管理事件的监听和触发
 // T 必须是 comparable 类型，因为它用作 map 的键
 type Emitter[T comparable] struct {
-	mu           sync.Mutex                    // 互斥锁，确保线程安全
-	events       map[T][]Listener[T]           // 事件到监听器列表的映射
-	recoverer    RecoveryListener[T]           // 可选的恢复监听器，用于处理 panic
-	maxListeners int                           // 每个事件的最大监听器数量，用于调试内存泄漏
-	onces        map[*Listener[T]]*Listener[T] // 用于记录 Once 包装的监听器
+	mu           sync.Mutex                  // 互斥锁，确保线程安全
+	events       map[T][]*listenerWrapper[T] // 事件到监听器列表的映射
+	recoverer    RecoveryListener[T]         // 可选的恢复监听器，用于处理 panic
+	maxListeners int                         // 每个事件的最大监听器数量，用于调试内存泄漏
+	nextID       uint64                      // 下一个监听器的ID
+	listenerIDs  map[*Listener[T]]uint64     // 监听器函数到ID的映射
 }
 
 // NewEmitter 创建一个新的泛型事件发射器
 // 返回初始化好的 Emitter 实例，默认最大监听器数为 DefaultMaxListeners
 func NewEmitter[T comparable]() *Emitter[T] {
 	return &Emitter[T]{
-		events:       make(map[T][]Listener[T]),
+		events:       make(map[T][]*listenerWrapper[T]),
 		maxListeners: DefaultMaxListeners,
-		onces:        make(map[*Listener[T]]*Listener[T]),
+		nextID:       1,
+		listenerIDs:  make(map[*Listener[T]]uint64),
 	}
 }
 
@@ -51,7 +60,15 @@ func (e *Emitter[T]) AddListener(event T, listener Listener[T]) *Emitter[T] {
 		fmt.Fprintf(os.Stdout, "Warning: event `%v` exceeds max listeners limit of %d\n", event, e.maxListeners)
 	}
 
-	e.events[event] = append(e.events[event], listener)
+	id := e.nextID
+	e.nextID++
+	wrapper := &listenerWrapper[T]{
+		id:       id,
+		listener: listener,
+		isOnce:   false,
+	}
+	e.events[event] = append(e.events[event], wrapper)
+	e.listenerIDs[&listener] = id
 	return e
 }
 
@@ -69,17 +86,19 @@ func (e *Emitter[T]) RemoveListener(event T, listener Listener[T]) *Emitter[T] {
 
 	if listeners, ok := e.events[event]; ok {
 		lPtr := &listener
-		if once, exists := e.onces[lPtr]; exists {
-			lPtr = once // 如果是 Once 包装的监听器，使用原始指针
+		id, exists := e.listenerIDs[lPtr]
+		if !exists {
+			return e // 监听器未注册，直接返回
 		}
 
-		newListeners := make([]Listener[T], 0, len(listeners))
-		for _, l := range listeners {
-			if &l != lPtr {
-				newListeners = append(newListeners, l)
+		newListeners := make([]*listenerWrapper[T], 0, len(listeners))
+		for _, wrapper := range listeners {
+			if wrapper.id != id {
+				newListeners = append(newListeners, wrapper)
 			}
 		}
 		e.events[event] = newListeners
+		delete(e.listenerIDs, lPtr)
 	}
 	return e
 }
@@ -94,18 +113,24 @@ func (e *Emitter[T]) Off(event T, listener Listener[T]) *Emitter[T] {
 // 参数 listener: 监听器函数
 // 触发后自动移除
 func (e *Emitter[T]) Once(event T, listener Listener[T]) *Emitter[T] {
-	var once Listener[T]
-	once = func(args ...T) {
-		defer e.RemoveListener(event, once)
-		listener(args...)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners {
+		fmt.Fprintf(os.Stdout, "Warning: event `%v` exceeds max listeners limit of %d\n", event, e.maxListeners)
 	}
 
-	lPtr := &listener
-	e.mu.Lock()
-	e.onces[lPtr] = &once
-	e.mu.Unlock()
+	id := e.nextID
+	e.nextID++
 
-	return e.AddListener(event, once)
+	wrapper := &listenerWrapper[T]{
+		id:       id,
+		listener: listener,
+		isOnce:   true,
+	}
+	e.events[event] = append(e.events[event], wrapper)
+	e.listenerIDs[&listener] = id
+	return e
 }
 
 // Emit 异步触发事件的所有监听器
@@ -118,21 +143,57 @@ func (e *Emitter[T]) Emit(event T, args ...T) *Emitter[T] {
 		e.mu.Unlock()
 		return e
 	}
-	listenersCopy := make([]Listener[T], len(listeners))
+	// 复制监听器列表以避免在执行期间被修改
+	listenersCopy := make([]*listenerWrapper[T], len(listeners))
 	copy(listenersCopy, listeners)
+
+	// 收集需要移除的 once 监听器的 ID
+	var onceIDs []uint64
+	for _, wrapper := range listenersCopy {
+		if wrapper.isOnce {
+			onceIDs = append(onceIDs, wrapper.id)
+		}
+	}
 	e.mu.Unlock()
 
 	var wg sync.WaitGroup
 	wg.Add(len(listenersCopy))
 
-	for _, listener := range listenersCopy {
-		go func(l Listener[T]) {
+	for _, wrapper := range listenersCopy {
+		go func(w *listenerWrapper[T]) {
 			defer wg.Done()
-			e.callListener(event, l, args...)
-		}(listener)
+			e.callListener(event, w.listener, args...)
+		}(wrapper)
 	}
 
 	wg.Wait()
+
+	// 移除已触发的 once 监听器
+	if len(onceIDs) > 0 {
+		e.mu.Lock()
+		if currentListeners, exists := e.events[event]; exists {
+			onceIDSet := make(map[uint64]bool)
+			for _, id := range onceIDs {
+				onceIDSet[id] = true
+			}
+			newListeners := make([]*listenerWrapper[T], 0, len(currentListeners))
+			for _, wrapper := range currentListeners {
+				if !onceIDSet[wrapper.id] {
+					newListeners = append(newListeners, wrapper)
+				} else {
+					// 从 listenerIDs 中移除
+					for lPtr, id := range e.listenerIDs {
+						if id == wrapper.id {
+							delete(e.listenerIDs, lPtr)
+							break
+						}
+					}
+				}
+			}
+			e.events[event] = newListeners
+		}
+		e.mu.Unlock()
+	}
 	return e
 }
 
@@ -146,12 +207,49 @@ func (e *Emitter[T]) EmitSync(event T, args ...T) *Emitter[T] {
 		e.mu.Unlock()
 		return e
 	}
-	listenersCopy := make([]Listener[T], len(listeners))
+	// 复制监听器列表
+	listenersCopy := make([]*listenerWrapper[T], len(listeners))
 	copy(listenersCopy, listeners)
+
+	// 收集需要移除的 once 监听器的 ID
+	var onceIDs []uint64
+	for _, wrapper := range listenersCopy {
+		if wrapper.isOnce {
+			onceIDs = append(onceIDs, wrapper.id)
+		}
+	}
 	e.mu.Unlock()
 
-	for _, listener := range listenersCopy {
-		e.callListener(event, listener, args...)
+	// 同步执行监听器
+	for _, wrapper := range listenersCopy {
+		e.callListener(event, wrapper.listener, args...)
+	}
+
+	// 移除已触发的 once 监听器
+	if len(onceIDs) > 0 {
+		e.mu.Lock()
+		if currentListeners, exists := e.events[event]; exists {
+			onceIDSet := make(map[uint64]bool)
+			for _, id := range onceIDs {
+				onceIDSet[id] = true
+			}
+			newListeners := make([]*listenerWrapper[T], 0, len(currentListeners))
+			for _, wrapper := range currentListeners {
+				if !onceIDSet[wrapper.id] {
+					newListeners = append(newListeners, wrapper)
+				} else {
+					// 从 listenerIDs 中移除
+					for lPtr, id := range e.listenerIDs {
+						if id == wrapper.id {
+							delete(e.listenerIDs, lPtr)
+							break
+						}
+					}
+				}
+			}
+			e.events[event] = newListeners
+		}
+		e.mu.Unlock()
 	}
 	return e
 }

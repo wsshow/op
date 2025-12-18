@@ -15,8 +15,11 @@ func TestNewEmitter(t *testing.T) {
 	if len(em.events) != 0 {
 		t.Errorf("NewEmitter should initialize empty events map, got %d events", len(em.events))
 	}
-	if len(em.onces) != 0 {
-		t.Errorf("NewEmitter should initialize empty onces map, got %d entries", len(em.onces))
+	if len(em.listenerIDs) != 0 {
+		t.Errorf("NewEmitter should initialize empty listenerIDs map, got %d entries", len(em.listenerIDs))
+	}
+	if em.nextID != 1 {
+		t.Errorf("NewEmitter should initialize nextID to 1, got %d", em.nextID)
 	}
 }
 
@@ -83,12 +86,12 @@ func TestOnce(t *testing.T) {
 	listener := func(args ...string) { called++ }
 	em.Once("test", listener)
 
-	em.Emit("test", "data")
+	em.EmitSync("test", "data")
 	if called != 1 {
 		t.Errorf("Once listener should be called once, got %d calls", called)
 	}
 
-	em.Emit("test", "data")
+	em.EmitSync("test", "data")
 	if called != 1 {
 		t.Errorf("Once listener should not be called again, got %d calls", called)
 	}
