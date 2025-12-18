@@ -263,39 +263,82 @@ for _, s := range topStudents {
 ### Filtering
 - `Where(predicate func(T) bool) Linq[T]`: Filter elements by predicate
 - `Any(predicate func(T) bool) bool`: Check if any element matches
+- `All(predicate func(T) bool) bool`: Check if all elements match
 - `Distinct() Linq[T]`: Remove duplicates (requires comparer)
 - `DistinctComparable[T comparable](l Linq[T]) Linq[T]`: Remove duplicates for comparable types
+- `TakeWhile(predicate func(T) bool) Linq[T]`: Take elements while predicate is true
+- `SkipWhile(predicate func(T) bool) Linq[T]`: Skip elements while predicate is true
 
 ### Transformation
 - `Select(selector func(T) T) Linq[T]`: Transform each element
+- `SelectMany[T, R any](l Linq[T], selector func(T) []R) Linq[R]`: Flatten and transform
 - `Concat(other Linq[T]) Linq[T]`: Merge two datasets
 - `Reverse() Linq[T]`: Reverse order
+- `Append(elements ...T) Linq[T]`: Add elements at the end
+- `Prepend(elements ...T) Linq[T]`: Add elements at the beginning
 
 ### Sorting
 - `Sort(compareFn func(a, b T) bool) Linq[T]`: Sort with custom comparison
 - `WithComparer(compare func(a, b T) int) Linq[T]`: Set comparer for Min/Max/Distinct
 
 ### Aggregation
+- `Count() int`: Get number of elements
+- `CountBy(predicate func(T) bool) int`: Count elements matching predicate
 - `Min() (T, bool)`: Get minimum element (requires comparer)
 - `Max() (T, bool)`: Get maximum element (requires comparer)
+- `Sum[T numeric](l Linq[T]) T`: Sum of numeric elements
+- `Average[T numeric](l Linq[T]) float64`: Average of numeric elements
+
+### Element Access
+- `First() (T, bool)`: Get first element or zero value
+- `FirstOrDefault() (T, bool)`: Get first element or zero value (alias)
+- `FirstBy(predicate func(T) bool) (T, bool)`: Get first element matching predicate
+- `FirstByOrDefault(predicate func(T) bool) (T, bool)`: Get first matching element or zero value (alias)
+- `Last() (T, bool)`: Get last element or zero value
+- `LastOrDefault() (T, bool)`: Get last element or zero value (alias)
+- `LastBy(predicate func(T) bool) (T, bool)`: Get last element matching predicate
+- `LastByOrDefault(predicate func(T) bool) (T, bool)`: Get last matching element or zero value (alias)
+- `ElementAt(index int) (T, bool)`: Get element at index or zero value
+- `ElementAtOrDefault(index int) (T, bool)`: Get element at index or zero value (alias)
+- `Contains[T comparable](l Linq[T], value T) bool`: Check if contains value
 
 ### Pagination
 - `Take(n int) Linq[T]`: Take first n elements
 - `Skip(n int) Linq[T]`: Skip first n elements
 
+### Set Operations
+- `Union[T comparable](l1, l2 Linq[T]) Linq[T]`: Union of two sets (distinct)
+- `Intersect[T comparable](l1, l2 Linq[T]) Linq[T]`: Intersection of two sets
+- `Except[T comparable](l1, l2 Linq[T]) Linq[T]`: Elements in first but not in second
+
 ### Grouping & Joining
 - `GroupBy[K comparable, T any](l Linq[T], keySelector func(T) K) []Group[K, T]`: Group by key
 - `Join[T, U, K comparable, R any](outer, inner, outerKey, innerKey, resultSelector) Linq[R]`: Join two datasets
 
-### Result Extraction
+### Utilities
+- `Error() error`: Get error from the operation chain
+- `Chunk(size int) [][]T`: Split into chunks of specified size
+- `DefaultIfEmpty(defaultValue T) Linq[T]`: Return sequence with default value if empty
+- `ForEach(action func(T))`: Execute action for each element
 - `Results() []T`: Get the final slice result
+- `ToSlice() []T`: Get a copy of the underlying slice
 
 ## Notes
 
-- **Comparer Required**: `Distinct()`, `Min()`, and `Max()` require a comparer set via `WithComparer()`.
+- **Error Handling**: Instead of panicking, LINQ methods set an internal error state that propagates through the chain. Always check errors at the end:
+  ```go
+  result := linq.From(data).
+      Distinct().  // Needs comparer
+      Results()
+  if err := linq.From(data).Distinct().Error(); err != nil {
+      // Handle error
+  }
+  ```
+- **Comparer Required**: `Distinct()`, `Min()`, and `Max()` require a comparer set via `WithComparer()`. If not set, they return an error.
 - **Comparable Types**: Use `DistinctComparable()` for built-in comparable types (int, string, etc.).
 - **Immutability**: Operations return new Linq instances; original data is not modified (except the underlying slice reference).
 - **Performance**: For large datasets, be mindful of multiple allocations in long chains.
+- **Method Returns**: Methods like `First()`, `Last()`, etc. now return `(T, bool)` instead of just `T` to avoid panics.
 
 ## License
 

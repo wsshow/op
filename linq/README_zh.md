@@ -287,15 +287,30 @@ for _, s := range topStudents {
 - `GroupBy[K comparable, T any](l Linq[T], keySelector func(T) K) []Group[K, T]`: 按键分组
 - `Join[T, U, K comparable, R any](outer, inner, outerKey, innerKey, resultSelector) Linq[R]`: 连接两个数据集
 
-### 结果提取
+### 工具方法
+- `Error() error`: 获取操作链中的错误
+- `Chunk(size int) [][]T`: 分块为指定大小
+- `DefaultIfEmpty(defaultValue T) Linq[T]`: 如果为空则返回包含默认值的序列
+- `ForEach(action func(T))`: 对每个元素执行操作
 - `Results() []T`: 获取最终的切片结果
+- `ToSlice() []T`: 获取底层切片的副本
 
 ## 注意事项
 
-- **需要比较器**: `Distinct()`、`Min()` 和 `Max()` 需要通过 `WithComparer()` 设置比较器
+- **错误处理**: LINQ 方法不会 panic，而是设置内部错误状态并在链中传播。始终在最后检查错误：
+  ```go
+  result := linq.From(data).
+      Distinct().  // 需要比较器
+      Results()
+  if err := linq.From(data).Distinct().Error(); err != nil {
+      // 处理错误
+  }
+  ```
+- **需要比较器**: `Distinct()`、`Min()` 和 `Max()` 需要通过 `WithComparer()` 设置比较器。如果未设置，它们会返回错误
 - **可比较类型**: 对于内置的可比较类型（int、string等），使用 `DistinctComparable()`
 - **不可变性**: 操作返回新的 Linq 实例；原始数据不被修改（底层切片引用除外）
 - **性能**: 对于大型数据集，注意长链中的多次内存分配
+- **方法返回值**: `First()`、`Last()` 等方法现在返回 `(T, bool)` 而不是仅 `T`，以避免 panic
 
 ## 许可证
 
