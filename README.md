@@ -29,7 +29,7 @@ A high-performance generic double-ended queue implementation based on a circular
 
 A universal event publish-subscribe system supporting both async and sync event handling.
 
-- **Features**: One-time listeners, panic recovery, event type must be `comparable`
+- **Features**: Unique ID-based listener management, one-time listeners, panic recovery, event type must be `comparable`
 - **Use Case**: Decoupling component communication, implementing observer pattern
 - **Docs**: [emission/README.md](emission/README.md)
 
@@ -37,7 +37,7 @@ A universal event publish-subscribe system supporting both async and sync event 
 
 LINQ-style chainable query API for Go slices.
 
-- **Features**: Filtering, mapping, sorting, grouping, and common query operations
+- **Features**: 30+ methods including Where, Select, OrderBy, GroupBy, Distinct, First/Last, All/Any, Contains, Union, Intersect, Except, SelectMany, Chunk, TakeWhile, SkipWhile, Sum, Average, and more
 - **Use Case**: Complex data transformation and query requirements
 - **Docs**: [linq/README.md](linq/README.md)
 
@@ -56,7 +56,7 @@ Tools for creating, managing, and executing external processes.
 
 Generic slice wrapper with rich utility methods.
 
-- **Features**: Push, pop, filter, map, reduce operations
+- **Features**: Push, pop, filter, map, reduce, clear, clone, and more operations
 - **Use Case**: Enhancing slice manipulation capabilities
 - **Docs**: [slice/README.md](slice/README.md) | [中文文档](slice/README_zh.md)
 

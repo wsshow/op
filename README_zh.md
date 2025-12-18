@@ -29,7 +29,7 @@
 
 通用的事件发布订阅系统，支持异步和同步事件处理。
 
-- **特点**: 支持一次性监听器、panic 恢复、事件类型必须是 `comparable`
+- **特点**: 基于唯一 ID 的监听器管理、支持一次性监听器、panic 恢复、事件类型必须是 `comparable`
 - **适用场景**: 解耦组件间的通信、实现观察者模式
 - **文档**: [emission/README.md](emission/README.md)
 
@@ -37,7 +37,7 @@
 
 为 Go 切片提供 LINQ 风格的链式查询 API。
 
-- **特点**: 支持过滤、映射、排序、分组等常见查询操作
+- **特点**: 提供 30+ 种方法，包括 Where、Select、OrderBy、GroupBy、Distinct、First/Last、All/Any、Contains、Union、Intersect、Except、SelectMany、Chunk、TakeWhile、SkipWhile、Sum、Average 等
 - **适用场景**: 复杂的数据转换和查询需求
 - **文档**: [linq/README.md](linq/README.md)
 
@@ -56,7 +56,7 @@
 
 泛型切片包装器，提供丰富的实用方法。
 
-- **特点**: Push、pop、filter、map、reduce 等操作
+- **特点**: Push、pop、filter、map、reduce、clear、clone 等操作
 - **适用场景**: 增强切片的操作能力
 - **文档**: [slice/README.md](slice/README.md) | [中文文档](slice/README_zh.md)
 
