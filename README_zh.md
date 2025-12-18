@@ -1,75 +1,92 @@
 # OP - Go 实用工具包集合
 
+[![Go 版本](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://golang.org)
+[![许可证](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 [English](./README.md) | 简体中文
 
-`op` 是一个 Go 语言的实用工具集，它提供了多种可重用的包，用于处理常见的编程任务。每个包都被设计为轻量级、高效，并且易于集成到您的项目中。此仓库作为所有子包的集中入口点。
+`op` 是一个精心设计的 Go 工具包，提供了多种可重用的包来处理常见的编程任务。每个包都注重性能、易用性和泛型支持，可以轻松集成到您的项目中。本仓库作为所有子包的统一入口点。
 
-## 包含的包
+## ✨ 特性
 
-该工具集包含以下包：
+- 🚀 **高性能**: 优化的实现，注重内存和 CPU 效率
+- 🎯 **泛型支持**: 全面支持 Go 1.18+ 泛型，提供类型安全的 API
+- 📦 **模块化设计**: 每个包都是独立的，可按需使用
+- 🔧 **易于集成**: 简洁的 API 设计，最小化学习成本
+- 🧪 **完整测试**: 包含全面的单元测试
 
-### deque
+## 📦 包列表
 
-一个通用的双端队列（deque）实现。
+### 🔄 deque - 双端队列
 
-- **特性**：支持从两端进行推入/弹出操作，兼容泛型。
-- **使用方法**：详情请查看 [deque/README.md](deque/README.md) 或 [deque/README_zh.md](deque/README_zh.md)。
+高性能的泛型双端队列实现，基于环形缓冲区设计。
 
-### emission
+- **特点**: O(1) 时间复杂度的两端操作、动态扩容、支持旋转、搜索等高级功能
+- **适用场景**: 需要频繁在两端插入删除元素的场景
+- **文档**: [deque/README.md](deque/README.md) | [中文文档](deque/README_zh.md)
 
-一个用于发布/订阅模式的通用事件发射器。
+### 📡 emission - 事件发射器
 
-- **特性**：支持事件订阅，一次性监听器，异步/同步发射，以及恐慌恢复。
-- **限制**：事件类型必须是可比较的。
-- **使用方法**：详情请查看 [emission/README.md](emission/README.md)。
+通用的事件发布订阅系统，支持异步和同步事件处理。
 
-### linq
+- **特点**: 支持一次性监听器、panic 恢复、事件类型必须是 `comparable`
+- **适用场景**: 解耦组件间的通信、实现观察者模式
+- **文档**: [emission/README.md](emission/README.md)
 
-一个用于 Go 切片的 LINQ 风格查询库。
+### 🔍 linq - LINQ 风格查询
 
-- **特性**：支持过滤、映射、排序、分组等多种操作。
-- **使用方法**：详情请查看 [linq/README.md](linq/README.md)（如果存在）。
+为 Go 切片提供 LINQ 风格的链式查询 API。
 
-### process
+- **特点**: 支持过滤、映射、排序、分组等常见查询操作
+- **适用场景**: 复杂的数据转换和查询需求
+- **文档**: [linq/README.md](linq/README.md)
 
-用于管理外部进程的工具。
+### 🛠️ process - 进程管理
 
-- **特性**：支持进程执行，标准输出/错误处理，以及进程管理。
-- **文件**：
-  - `process.go`：核心进程处理。
-  - `process_m.go`：用于管理多个进程的进程管理器。
-- **使用方法**：详情请查看 [process/README.md](process/README.md) 或 [process/README_zh.md](process/README_zh.md)。
+外部进程的创建、管理和执行工具。
 
-### slice
+- **特点**: 进程执行、标准输出/错误处理、多进程管理
+- **核心文件**:
+  - `process.go`: 核心进程处理
+  - `process_m.go`: 多进程管理器
+- **适用场景**: 需要执行和管理外部命令的场景
+- **文档**: [process/README.md](process/README.md) | [中文文档](process/README_zh.md)
 
-一个带有实用方法的泛型切片包装器。
+### 📋 slice - 切片工具
 
-- **特性**：支持推入、弹出、过滤、映射、归约等操作。
-- **使用方法**：详情请查看 [slice/README.md](slice/README.md) 或 [slice/README_zh.md](slice/README_zh.md)。
+泛型切片包装器，提供丰富的实用方法。
 
-### str
+- **特点**: Push、pop、filter、map、reduce 等操作
+- **适用场景**: 增强切片的操作能力
+- **文档**: [slice/README.md](slice/README.md) | [中文文档](slice/README_zh.md)
 
-一个带有常用操作的字符串包装器。
+### 🔤 str - 字符串工具
 
-- **特性**：包含、拆分、替换、大小写转换等操作。
-- **使用方法**：详情请查看 [str/README.md](str/README.md)（如果存在）。
+字符串包装器，提供常见的字符串操作。
 
-### workerpool
+- **特点**: 包含检查、分割、替换、大小写转换等
+- **适用场景**: 简化字符串处理逻辑
+- **文档**: [str/README.md](str/README.md)
 
-一个用于并发任务执行的工人池。
+### ⚡ workerpool - 工作池
 
-- **特性**：固定大小的工人池，支持任务提交。
-- **使用方法**：详情请查看 [workerpool/README.md](workerpool/README.md) 或 [workerpool/README_zh.md](workerpool/README_zh.md)。
+高性能的工作池实现，用于并发任务执行。
 
-### generator (未完成)
+- **特点**: 动态工作线程管理、任务队列、暂停/恢复功能、自动资源回收
+- **适用场景**: 控制并发度、提高任务处理效率
+- **文档**: [workerpool/README.md](workerpool/README.md) | [中文文档](workerpool/README_zh.md)
 
-一个生成器包
+### 🎲 generator - 生成器
 
-- **文件**：出现在多个目录中，但缺乏清晰的实现。
+轻量级的生成器实现，支持协程式的值生成。
 
-## 安装
+- **特点**: 泛型支持、Yield 机制、安全的资源管理
+- **适用场景**: 需要延迟计算或迭代生成值的场景
+- **文档**: [generator/README.md](generator/README.md) | [中文文档](generator/README_zh.md)
 
-要在您的 Go 项目中使用`op`工具集，请运行以下命令：
+## 🚀 安装
+
+要在您的 Go 项目中使用 `op` 工具集，请运行以下命令：
 
 ```bash
 go get github.com/wsshow/op
@@ -81,40 +98,72 @@ go get github.com/wsshow/op
 import "github.com/wsshow/op"
 ```
 
-## 使用示例
+## 💡 使用示例
 
 ```go
 package main
+
 import (
 	"fmt"
 	"github.com/wsshow/op"
 )
+
 func main() {
-	// 创建一个字符串
+	// 创建字符串包装器
 	s := op.NewString("Hello, World")
-	fmt.Println(s.Contain("World")) // 输出：true
-	// 创建一个切片
+	fmt.Println(s.Contain("World")) // true
+
+	// 创建泛型切片
 	sl := op.NewSlice(1, 2, 3)
-	fmt.Println(sl.Data()) // 输出：[1 2 3]
-	// 创建一个事件发射器
+	fmt.Println(sl.Data()) // [1 2 3]
+
+	// 创建事件发射器
 	em := op.NewEmitter[string]()
 	em.On("event", func(args ...string) {
 		fmt.Println("事件:", args)
 	})
-	em.Emit("event", "测试") // 输出：事件: [测试]
+	em.Emit("event", "测试") // 事件: [测试]
+
+	// 创建双端队列
+	d := op.NewDeque[int]()
+	d.PushBack(1)
+	d.PushFront(0)
+	fmt.Println(d.PopFront()) // 0
+
+	// 创建工作池
+	wp := op.NewWorkerPool(4)
+	wp.Submit(func() {
+		fmt.Println("任务已执行")
+	})
+	wp.StopWait()
 }
 ```
 
-## 目录结构
+## 📁 目录结构
 
 ```
 op/
-├── deque/              # 双端队列
-├── emission/           # 事件发射器
-├── linq/               # LINQ风格查询（多个实例）
-├── process/            # 进程管理（多个实例）
-├── slice/              # 切片工具
+├── deque/              # 双端队列实现
+├── emission/           # 发布/订阅模式事件发射器
+├── linq/               # LINQ 风格查询库
+├── process/            # 进程管理工具
+├── slice/              # 泛型切片工具
 ├── str/                # 字符串工具
-├── workerpool/         # 工人池
-└── op.go               # 工具集入口点
+├── workerpool/         # 并发工作池
+├── generator/          # 生成器工具
+└── op.go               # 主入口点
 ```
+
+## 🤝 贡献
+
+欢迎贡献代码！请随时提交 Pull Request。对于重大更改，请先创建 Issue 来讨论您想要更改的内容。
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
+
+## 🙏 致谢
+
+- [deque](https://github.com/gammazero/deque) - 双端队列实现的灵感来源
+- [workerpool](https://github.com/gammazero/workerpool) - 工作池实现的灵感来源
+- [emission](https://github.com/chuckpreslar/emission) - 事件发射器的灵感来源

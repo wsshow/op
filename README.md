@@ -1,71 +1,90 @@
 # OP - A Collection of Go Utility Packages
 
+[![Go Version](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 English | [简体中文](README_zh.md)
 
-`op` is a Go utility toolkit that provides a variety of reusable packages for common programming tasks. Each package is designed to be lightweight, efficient, and easy to integrate into your projects. This repository serves as a centralized entry point for all sub-packages.
+`op` is a carefully crafted Go utility toolkit that provides a variety of reusable packages for common programming tasks. Each package focuses on performance, usability, and generic support, making them easy to integrate into your projects. This repository serves as a centralized entry point for all sub-packages.
 
-## Packages
+## ✨ Features
 
-The toolkit includes the following packages:
+- 🚀 **High Performance**: Optimized implementations with attention to memory and CPU efficiency
+- 🎯 **Generic Support**: Full support for Go 1.18+ generics with type-safe APIs
+- 📦 **Modular Design**: Each package is independent and can be used as needed
+- 🔧 **Easy Integration**: Clean API design with minimal learning curve
+- 🧪 **Fully Tested**: Comprehensive unit tests included
 
-### deque
+## 📦 Packages
 
-A generic double-ended queue (deque) implementation.
+### 🔄 deque - Double-Ended Queue
 
-- **Features**: Push/pop from both ends, generic support.
-- **Usage**: See [deque/README.md](deque/README.md) or [deque/README_zh.md](deque/README_zh.md) for details.
+A high-performance generic double-ended queue implementation based on a circular buffer.
 
-### emission
+- **Features**: O(1) operations at both ends, dynamic resizing, rotation, search capabilities
+- **Use Case**: Scenarios requiring frequent insertions/deletions at both ends
+- **Docs**: [deque/README.md](deque/README.md) | [中文文档](deque/README_zh.md)
 
-A generic event emitter for pub/sub patterns.
+### 📡 emission - Event Emitter
 
-- **Features**: Event subscription, once listeners, async/sync emission, panic recovery.
-- **Constraints**: Event type must be `comparable`.
-- **Usage**: See [emission/README.md](emission/README.md).
+A universal event publish-subscribe system supporting both async and sync event handling.
 
-### linq
+- **Features**: One-time listeners, panic recovery, event type must be `comparable`
+- **Use Case**: Decoupling component communication, implementing observer pattern
+- **Docs**: [emission/README.md](emission/README.md)
 
-A LINQ-style query library for Go slices.
+### 🔍 linq - LINQ-Style Queries
 
-- **Features**: Filtering, mapping, sorting, grouping, and more.
-- **Usage**: See [linq/README.md](linq/README.md) (if exists).
+LINQ-style chainable query API for Go slices.
 
-### process
+- **Features**: Filtering, mapping, sorting, grouping, and common query operations
+- **Use Case**: Complex data transformation and query requirements
+- **Docs**: [linq/README.md](linq/README.md)
 
-Tools for managing external processes.
+### 🛠️ process - Process Management
 
-- **Features**: Process execution, stdout/stderr handling, process management.
-- **Files**:
-  - `process.go`: Core process handling.
-  - `process_m.go`: Process manager for multiple processes.
-- **Usage**: See [process/README.md](process/README.md) or [process/README_zh.md](process/README_zh.md).
+Tools for creating, managing, and executing external processes.
 
-### slice
+- **Features**: Process execution, stdout/stderr handling, multi-process management
+- **Core Files**:
+  - `process.go`: Core process handling
+  - `process_m.go`: Multi-process manager
+- **Use Case**: Executing and managing external commands
+- **Docs**: [process/README.md](process/README.md) | [中文文档](process/README_zh.md)
 
-A generic slice wrapper with utility methods.
+### 📋 slice - Slice Utilities
 
-- **Features**: Push, pop, filter, map, reduce, etc.
-- **Usage**: See [slice/README.md](slice/README.md) or [slice/README_zh.md](slice/README_zh.md).
+Generic slice wrapper with rich utility methods.
 
-### str
+- **Features**: Push, pop, filter, map, reduce operations
+- **Use Case**: Enhancing slice manipulation capabilities
+- **Docs**: [slice/README.md](slice/README.md) | [中文文档](slice/README_zh.md)
 
-A string wrapper with common operations.
+### 🔤 str - String Utilities
 
-- **Features**: Contains, split, replace, case conversion, etc.
-- **Usage**: See [str/README.md](str/README.md) (if exists).
+String wrapper with common string operations.
 
-### workerpool
+- **Features**: Contains check, split, replace, case conversion, etc.
+- **Use Case**: Simplifying string processing logic
+- **Docs**: [str/README.md](str/README.md)
 
-A worker pool for concurrent task execution.
+### ⚡ workerpool - Worker Pool
 
-- **Features**: Fixed-size worker pool, task submission.
-- **Usage**: See [workerpool/README.md](workerpool/README.md) or [workerpool/README_zh.md](workerpool/README_zh.md).
+High-performance worker pool for concurrent task execution.
 
-### generator (Incomplete)
+- **Features**: Dynamic worker management, task queue, pause/resume, automatic resource cleanup
+- **Use Case**: Controlling concurrency, improving task processing efficiency
+- **Docs**: [workerpool/README.md](workerpool/README.md) | [中文文档](workerpool/README_zh.md)
 
-A generator package
+### 🎲 generator - Generator
 
-## Installation
+Lightweight generator implementation supporting coroutine-style value generation.
+
+- **Features**: Generic support, yield mechanism, safe resource management
+- **Use Case**: Lazy evaluation or iterative value generation
+- **Docs**: [generator/README.md](generator/README.md) | [中文文档](generator/README_zh.md)
+
+## 🚀 Installation
 
 To use the `op` toolkit in your Go project, run:
 
@@ -79,7 +98,7 @@ Then import the desired packages:
 import "github.com/wsshow/op"
 ```
 
-## Usage Example
+## 💡 Usage Example
 
 ```go
 package main
@@ -90,11 +109,11 @@ import (
 )
 
 func main() {
-	// Create a string
+	// Create a string wrapper
 	s := op.NewString("Hello, World")
 	fmt.Println(s.Contain("World")) // true
 
-	// Create a slice
+	// Create a generic slice
 	sl := op.NewSlice(1, 2, 3)
 	fmt.Println(sl.Data()) // [1 2 3]
 
@@ -104,19 +123,47 @@ func main() {
 		fmt.Println("Event:", args)
 	})
 	em.Emit("event", "test") // Event: [test]
+
+	// Create a deque
+	d := op.NewDeque[int]()
+	d.PushBack(1)
+	d.PushFront(0)
+	fmt.Println(d.PopFront()) // 0
+
+	// Create a worker pool
+	wp := op.NewWorkerPool(4)
+	wp.Submit(func() {
+		fmt.Println("Task executed")
+	})
+	wp.StopWait()
 }
 ```
 
-## Directory Structure
+## 📁 Directory Structure
 
 ```
 op/
-├── deque/              # Double-ended queue
-├── emission/           # Event emitter
-├── linq/               # LINQ-style queries (multiple instances)
-├── process/            # Process management (multiple instances)
-├── slice/              # Slice utilities (multiple instances)
+├── deque/              # Double-ended queue implementation
+├── emission/           # Event emitter for pub/sub patterns
+├── linq/               # LINQ-style query library
+├── process/            # Process management tools
+├── slice/              # Generic slice utilities
 ├── str/                # String utilities
-├── workerpool/         # Worker pool
-└── op.go               # Toolkit entry point
+├── workerpool/         # Concurrent worker pool
+├── generator/          # Generator utilities
+└── op.go               # Main entry point
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [deque](https://github.com/gammazero/deque) - Inspiration for the deque implementation
+- [workerpool](https://github.com/gammazero/workerpool) - Inspiration for the worker pool implementation
+- [emission](https://github.com/chuckpreslar/emission) - Inspiration for the event emitter
