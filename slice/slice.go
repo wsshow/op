@@ -197,3 +197,14 @@ func (s *Slice[T]) Set(index int, value T) bool {
 func (s *Slice[T]) Data() []T {
 	return append([]T{}, s.data...)
 }
+
+// Clear 清空切片中的所有元素
+func (s *Slice[T]) Clear() *Slice[T] {
+	s.data = s.data[:0]
+	return s
+}
+
+// Clone 创建切片的深拷贝
+func (s *Slice[T]) Clone() *Slice[T] {
+	return &Slice[T]{data: append([]T{}, s.data...)}
+}
