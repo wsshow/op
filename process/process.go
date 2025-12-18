@@ -188,14 +188,19 @@ func (p *Process) Start() *Process {
 // Stop 停止正在运行的进程
 func (p *Process) Stop() *Process {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if !p.isRunning {
+		p.mu.Unlock()
 		p.setError(fmt.Errorf("process is not running"))
 		return p
 	}
 
-	p.cancelFunc()
+	cancelFunc := p.cancelFunc
+	p.mu.Unlock()
+
+	if cancelFunc != nil {
+		cancelFunc()
+	}
+
 	timeout := time.After(3 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -203,14 +208,24 @@ func (p *Process) Stop() *Process {
 	for {
 		select {
 		case <-timeout:
-			if p.pExec.Process != nil {
-				p.setError(p.pExec.Process.Kill())
+			p.mu.Lock()
+			if p.pExec != nil && p.pExec.Process != nil {
+				err := p.pExec.Process.Kill()
+				p.mu.Unlock()
+				if err != nil {
+					p.setError(err)
+				}
+			} else {
+				p.mu.Unlock()
 			}
 			return p
 		case <-ticker.C:
-			if p.pExec.ProcessState != nil {
+			p.mu.Lock()
+			if p.pExec != nil && p.pExec.ProcessState != nil {
+				p.mu.Unlock()
 				return p
 			}
+			p.mu.Unlock()
 		}
 	}
 }
