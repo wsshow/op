@@ -93,13 +93,13 @@ func (l Linq[T]) Any(predicate func(T) bool) bool {
 }
 
 // Distinct 移除重复元素，使用自定义比较函数
-// 如果未设置 compare 函数，将设置错误并返回空结果
+// 如果未设置 compare 函数，将 panic
 func (l Linq[T]) Distinct() Linq[T] {
 	if l.err != nil {
 		return l
 	}
 	if l.compare == nil {
-		return Linq[T]{err: &LinqError{Op: "Distinct", Msg: "requires a comparer, use WithComparer or DistinctComparable for comparable types"}}
+		panic("Distinct requires a comparer, use WithComparer or DistinctComparable for comparable types")
 	}
 	return l.distinctWithComparer()
 }
@@ -238,7 +238,7 @@ func (l Linq[T]) Min() (T, bool) {
 		return zero, false
 	}
 	if l.compare == nil {
-		return zero, false
+		panic("Min requires a comparer, use WithComparer")
 	}
 	min := l.data[0]
 	for i := 1; i < len(l.data); i++ {
@@ -259,7 +259,7 @@ func (l Linq[T]) Max() (T, bool) {
 		return zero, false
 	}
 	if l.compare == nil {
-		return zero, false
+		panic("Max requires a comparer, use WithComparer")
 	}
 	max := l.data[0]
 	for i := 1; i < len(l.data); i++ {

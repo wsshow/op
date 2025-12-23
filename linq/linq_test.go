@@ -2,6 +2,7 @@ package linq
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -75,18 +76,34 @@ func TestDistinctComparable(t *testing.T) {
 
 // TestDistinct 测试自定义比较函数去重
 func TestDistinct(t *testing.T) {
+	// 使用大小写不敏感的比较器
 	l := From([]string{"a", "A", "b"}).WithComparer(func(a, b string) int {
-		if a < b {
+		aLower, bLower := strings.ToLower(a), strings.ToLower(b)
+		if aLower < bLower {
 			return -1
-		} else if a > b {
+		} else if aLower > bLower {
 			return 1
 		}
 		return 0
 	})
 	result := l.Distinct().Results()
-	expected := []string{"a", "b"}
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Distinct should remove duplicates with comparer, expected %v, got %v", expected, result)
+	// 去重后应该有 2 个元素，a/A 算作同一个
+	if len(result) != 2 {
+		t.Errorf("Distinct should return 2 elements, got %d: %v", len(result), result)
+	}
+	// 验证包含 b
+	hasB := false
+	hasAorA := false
+	for _, v := range result {
+		if v == "b" {
+			hasB = true
+		}
+		if v == "a" || v == "A" {
+			hasAorA = true
+		}
+	}
+	if !hasB || !hasAorA {
+		t.Errorf("Distinct should contain 'b' and either 'a' or 'A', got %v", result)
 	}
 
 	// 测试未设置比较函数时 panic
