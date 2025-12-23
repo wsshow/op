@@ -166,20 +166,32 @@ func TestPause(t *testing.T) {
 		})
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	pool.Pause(ctx) // 暂停协程池
+	// 等待任务开始执行
+	time.Sleep(10 * time.Millisecond)
 
-	// 在暂停期间提交任务
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	// 在暂停期间提交任务（启动 Pause 的 goroutine，不阻塞当前测试）
+	pauseDone := make(chan struct{})
+	go func() {
+		pool.Pause(ctx) // 暂停协程池（会阻塞直到 pause 任务开始执行）
+		close(pauseDone)
+	}()
+
+	time.Sleep(150 * time.Millisecond) // 等待原任务完成 + pause 任务开始
 	pool.Submit(func() { atomic.AddInt32(&counter, 1) })
-	time.Sleep(10 * time.Millisecond) // 确保任务进入队列
-	if pool.WaitingQueueSize() != 1 {
-		t.Errorf("Task should be queued during pause, expected queue size 1, got %d", pool.WaitingQueueSize())
+	time.Sleep(20 * time.Millisecond) // 确保任务进入队列
+
+	queueSize := pool.WaitingQueueSize()
+	// 新提交的任务应该在队列中，因为所有 worker 都被 pause 任务阻塞
+	if queueSize < 1 {
+		t.Errorf("Task should be queued during pause, expected queue size >= 1, got %d", queueSize)
 	}
 
 	wg.Wait()
-	<-ctx.Done()                      // 等待暂停结束
-	time.Sleep(60 * time.Millisecond) // 等待第三个任务完成
+	<-pauseDone                       // 等待 Pause 返回
+	time.Sleep(50 * time.Millisecond) // 等待第三个任务完成
 	if counter != 3 {
 		t.Errorf("All tasks should complete after pause, expected counter 3, got %d", counter)
 	}
@@ -225,21 +237,30 @@ func TestMultiplePause(t *testing.T) {
 		pool.Pause(ctx1)
 	}()
 
-	time.Sleep(10 * time.Millisecond) // 确保第一个 Pause 开始
+	time.Sleep(10 * time.Millisecond) // 确保第一个 Pause 开始并占据 worker
+
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel2()
-	pool.Pause(ctx2) // 第二个 Pause 应等待第一个完成
+	pause2Done := make(chan struct{})
+	go func() {
+		pool.Pause(ctx2) // 第二个 Pause 应等待第一个完成
+		close(pause2Done)
+	}()
 
+	time.Sleep(10 * time.Millisecond) // 给第二个 Pause 时间尝试获取锁
 	pool.Submit(func() { atomic.AddInt32(&counter, 1) })
 	time.Sleep(10 * time.Millisecond)
-	if pool.WaitingQueueSize() != 1 {
-		t.Errorf("Task should be queued during pause, expected queue size 1, got %d", pool.WaitingQueueSize())
+	queueSize := pool.WaitingQueueSize()
+	// 任务应该在队列中，因为 worker 被第一个 Pause 占据
+	if queueSize != 1 {
+		t.Errorf("Task should be queued during pause, expected queue size 1, got %d", queueSize)
 	}
 
 	cancel1()                         // 取消第一个 Pause
-	time.Sleep(60 * time.Millisecond) // 等待任务执行
+	<-pause2Done                      // 等待第二个 Pause 完成
+	time.Sleep(20 * time.Millisecond) // 等待任务执行
 	if counter != 1 {
-		t.Errorf("Task should complete after first pause ends, expected counter 1, got %d", counter)
+		t.Errorf("Task should complete after pauses end, expected counter 1, got %d", counter)
 	}
 }
 

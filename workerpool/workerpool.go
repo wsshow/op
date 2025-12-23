@@ -23,6 +23,7 @@ type WorkerPool struct {
 	stoppedChan  chan struct{}       // 停止完成通道
 	waitingQueue deque.Deque[func()] // 等待任务队列
 	stopMutex    sync.Mutex          // 停止操作互斥锁
+	pauseMutex   sync.Mutex          // 暂停操作互斥锁
 	stopOnce     sync.Once           // 确保停止只执行一次
 	isStopped    bool                // 是否已停止
 	waitingCount int32               // 等待队列中的任务数
@@ -107,24 +108,36 @@ func (p *WorkerPool) WaitingQueueSize() int {
 // 返回时所有工作协程已暂停。任务可继续排队，但需等待 Context 取消或超时后执行。
 // 若协程池已暂停，则等待前次暂停取消后重新控制暂停状态。
 func (p *WorkerPool) Pause(ctx context.Context) {
+	p.pauseMutex.Lock()
+	defer p.pauseMutex.Unlock()
+
 	p.stopMutex.Lock()
-	defer p.stopMutex.Unlock()
 	if p.isStopped {
+		p.stopMutex.Unlock()
 		return
 	}
+	p.stopMutex.Unlock()
 
+	// 提交占位任务以阻塞所有 worker
 	readyWG := new(sync.WaitGroup)
+	doneWG := new(sync.WaitGroup)
 	readyWG.Add(p.maxWorkers)
+	doneWG.Add(p.maxWorkers)
+
 	for i := 0; i < p.maxWorkers; i++ {
 		p.Submit(func() {
 			readyWG.Done()
+			defer doneWG.Done()
 			select {
 			case <-ctx.Done():
 			case <-p.stopSignal:
 			}
 		})
 	}
-	readyWG.Wait() // 等待所有工作协程暂停
+
+	readyWG.Wait() // 等待所有暂停任务开始执行
+	<-ctx.Done()   // 等待 context 取消
+	doneWG.Wait()  // 等待所有暂停任务完成
 }
 
 // dispatch 分发任务给可用工作协程
@@ -135,11 +148,12 @@ func (p *WorkerPool) dispatch() {
 	idle := false
 	var wg sync.WaitGroup
 
+dispatchLoop:
 	for {
 		// 处理等待队列中的任务
 		if p.waitingQueue.Size() > 0 {
 			if !p.processWaitingQueue() {
-				break
+				break dispatchLoop
 			}
 			continue
 		}
@@ -147,7 +161,7 @@ func (p *WorkerPool) dispatch() {
 		select {
 		case task, ok := <-p.taskChan:
 			if !ok {
-				break
+				break dispatchLoop
 			}
 			p.handleTask(task, &workerCount, &wg)
 			idle = false
