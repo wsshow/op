@@ -110,8 +110,8 @@ func (d *Deque[T]) Clear() {
 	if d.size == 0 {
 		return
 	}
-	// 重置所有字段并清空缓冲区内容
-	for i := d.headIdx; i != d.tailIdx; i = d.nextIndex(i) {
+	// 清空整个缓冲区内容（避免内存泄漏）
+	for i := range d.buffer {
 		d.buffer[i] = *new(T)
 	}
 	d.headIdx = 0
@@ -141,13 +141,20 @@ func (d *Deque[T]) Rotate(steps int) {
 		return
 	}
 
-	modBits := len(d.buffer) - 1
+	// 正向旋转(steps > 0): 将前面的元素移到后面
+	// 负向旋转(steps < 0): 将后面的元素移到前面
 	if steps > 0 {
-		d.headIdx = (d.headIdx + steps) & modBits
-		d.tailIdx = (d.tailIdx + steps) & modBits
+		// 将前 steps 个元素移到后面
+		for i := 0; i < steps; i++ {
+			elem := d.PopFront()
+			d.PushBack(elem)
+		}
 	} else {
-		d.headIdx = (d.headIdx + steps) & modBits
-		d.tailIdx = (d.tailIdx + steps) & modBits
+		// 将后 -steps 个元素移到前面
+		for i := 0; i < -steps; i++ {
+			elem := d.PopBack()
+			d.PushFront(elem)
+		}
 	}
 }
 
@@ -199,7 +206,8 @@ func (d *Deque[T]) SetBaseCap(baseCap int) {
 		newCap <<= 1
 	}
 	d.baseCap = newCap
-	if d.Capacity() < newCap {
+	// 只有在已经分配了 buffer 且容量不足时才调整大小
+	if d.buffer != nil && d.Capacity() < newCap {
 		d.resize(newCap)
 	}
 }
@@ -241,6 +249,9 @@ func (d *Deque[T]) nextIndex(i int) int {
 // ensureCapacity 在队列满时扩展容量
 func (d *Deque[T]) ensureCapacity() {
 	if d.buffer == nil {
+		if d.baseCap == 0 {
+			d.baseCap = minCapacity
+		}
 		d.buffer = make([]T, d.baseCap)
 	} else if d.size == len(d.buffer) {
 		d.resize(d.size << 1)

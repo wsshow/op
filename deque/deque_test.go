@@ -68,7 +68,7 @@ func TestGrowShrinkFront(t *testing.T) {
 	for i := 0; i < size; i++ {
 		values[i] = i // 值从 0 到 size-1
 	}
-	testGrowShrink(t, &q, size, q.PushBack, q.PopFront, values)
+	testGrowShrink(t, &q, size, q.PushFront, q.PopFront, values)
 }
 
 // TestSimple 测试简单的队列操作
