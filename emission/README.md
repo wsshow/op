@@ -2,12 +2,12 @@
 
 English | [简体中文](README_zh.md)
 
-`emission` is a simple yet powerful generic event emitter for Go, providing a publish-subscribe pattern for event-driven programming with both async and sync event handling.
+`emission` is a powerful generic event emitter for Go, providing a publish-subscribe pattern for event-driven programming. It features a dual-generic design that separates event identifier types from listener parameter types for maximum flexibility and type safety.
 
 ## Features
 
-- **Generic Support**: Type-safe event handling with Go generics (Go 1.18+)
-- **Comparable Events**: Event types must be comparable (strings, ints, enums, etc.)
+- **Dual-Generic Design**: Complete separation of event identifier and listener parameter types for maximum flexibility
+- **Type Safety**: Compile-time type checking with Go generics (Go 1.18+)
 - **Async & Sync**: Support for both asynchronous and synchronous event emission
 - **Once Listeners**: Built-in support for one-time event listeners
 - **Panic Recovery**: Optional panic recovery for listener functions
@@ -19,6 +19,15 @@ English | [简体中文](README_zh.md)
 ```bash
 go get github.com/wsshow/op/emission
 ```
+
+## Core Concept
+
+`Emitter[E comparable, T any]` uses two generic parameters:
+
+- **E**: Event identifier type (must be comparable, like string, int, etc.)
+- **T**: Listener parameter type (can be any type)
+
+This design allows you to identify events with simple types (like strings) while passing complex data structures to listeners.
 
 ## Usage Examples
 
@@ -33,38 +42,66 @@ import (
 )
 
 func main() {
-    // Create an emitter with string event names
-    emitter := emission.NewEmitter[string]()
-    
+    // Create an emitter: event names are strings, parameters are strings
+    emitter := emission.NewEmitter[string, string]()
+
     // Add a listener
     emitter.On("message", func(args ...string) {
         fmt.Println("Received:", args)
     })
-    
+
     // Emit event synchronously
     emitter.EmitSync("message", "Hello", "World")
     // Output: Received: [Hello World]
 }
 ```
 
+### Using Custom Data Structures
+
+```go
+type User struct {
+    Name string
+    Age  int
+}
+
+// Event names are strings, parameters are User structs
+emitter := emission.NewEmitter[string, User]()
+
+emitter.On("user_login", func(users ...User) {
+    for _, user := range users {
+        fmt.Printf("User %s (age: %d) logged in\n", user.Name, user.Age)
+    }
+})
+
+emitter.EmitSync("user_login", User{Name: "Alice", Age: 30})
+// Output: User Alice (age: 30) logged in
+```
+
 ### Async Event Emission
 
 ```go
-emitter := emission.NewEmitter[string]()
+type Message struct {
+    ID      int
+    Content string
+}
 
-emitter.On("data", func(args ...string) {
-    fmt.Println("Processing:", args[0])
+emitter := emission.NewEmitter[string, Message]()
+
+emitter.On("message", func(msgs ...Message) {
+    for _, msg := range msgs {
+        fmt.Printf("Processing message #%d: %s\n", msg.ID, msg.Content)
+    }
 })
 
 // Emit asynchronously (non-blocking)
-emitter.Emit("data", "item1")
-emitter.Emit("data", "item2")
+emitter.Emit("message", Message{ID: 1, Content: "Hello"})
+emitter.Emit("message", Message{ID: 2, Content: "World"})
 ```
 
-### One-Time Listeners
+### Once Listeners
 
 ```go
-emitter := emission.NewEmitter[string]()
+emitter := emission.NewEmitter[string, string]()
 
 // Listener will be automatically removed after first trigger
 emitter.Once("startup", func(args ...string) {
@@ -72,45 +109,48 @@ emitter.Once("startup", func(args ...string) {
 })
 
 emitter.EmitSync("startup") // Output: Application started!
-emitter.EmitSync("startup") // No output (listener was removed)
+emitter.EmitSync("startup") // No output (listener removed)
 ```
 
-### Removing Listeners
+### Removing All Listeners
 
 ```go
-emitter := emission.NewEmitter[string]()
+emitter := emission.NewEmitter[string, int]()
 
-handler := func(args ...string) {
-    fmt.Println("Event triggered")
-}
+emitter.On("event", func(args ...int) { fmt.Println("Listener 1") })
+emitter.On("event", func(args ...int) { fmt.Println("Listener 2") })
 
-emitter.On("test", handler)
-emitter.EmitSync("test") // Output: Event triggered
+fmt.Println("Listener count:", emitter.GetListenerCount("event")) // Output: 2
 
-emitter.Off("test", handler)
-emitter.EmitSync("test") // No output (listener removed)
+emitter.RemoveAllListeners("event")
+fmt.Println("Listener count:", emitter.GetListenerCount("event")) // Output: 0
 ```
 
 ### Panic Recovery
 
 ```go
-emitter := emission.NewEmitter[string]()
+type ErrorData struct {
+    Code    int
+    Message string
+}
 
-// Set up recovery handler
+emitter := emission.NewEmitter[string, ErrorData]()
+
+// Set recovery handler
 emitter.RecoverWith(func(event string, listener interface{}, err error) {
     fmt.Printf("Panic in event '%s': %v\n", event, err)
 })
 
-// Add listener that panics
-emitter.On("error", func(args ...string) {
+// Add a listener that panics
+emitter.On("error", func(args ...ErrorData) {
     panic("Something went wrong!")
 })
 
-emitter.EmitSync("error") // Panic is caught and logged
-// Output: Panic in event 'error': panic occurred in listener: Something went wrong!
+emitter.EmitSync("error", ErrorData{Code: 500, Message: "Internal Error"})
+// Panic is caught and logged
 ```
 
-### Using Integer Event Types
+### Using Integer Event Identifiers
 
 ```go
 const (
@@ -119,18 +159,23 @@ const (
     EventPause
 )
 
-emitter := emission.NewEmitter[int]()
+type AppState struct {
+    Timestamp int64
+    Status    string
+}
 
-emitter.On(EventStart, func(args ...int) {
-    fmt.Println("Started")
+emitter := emission.NewEmitter[int, AppState]()
+
+emitter.On(EventStart, func(states ...AppState) {
+    fmt.Printf("App started, status: %s\n", states[0].Status)
 })
 
-emitter.On(EventStop, func(args ...int) {
-    fmt.Println("Stopped")
+emitter.On(EventStop, func(states ...AppState) {
+    fmt.Printf("App stopped, status: %s\n", states[0].Status)
 })
 
-emitter.EmitSync(EventStart) // Output: Started
-emitter.EmitSync(EventStop)  // Output: Stopped
+emitter.EmitSync(EventStart, AppState{Timestamp: 1234567890, Status: "running"})
+emitter.EmitSync(EventStop, AppState{Timestamp: 1234567900, Status: "stopped"})
 ```
 
 ### Custom Event Types
@@ -144,141 +189,129 @@ const (
     DataReceived EventType = "data:received"
 )
 
-emitter := emission.NewEmitter[EventType]()
+type UserEvent struct {
+    UserID   string
+    Username string
+    IP       string
+}
 
-emitter.On(UserLogin, func(args ...EventType) {
-    fmt.Println("User logged in")
+emitter := emission.NewEmitter[EventType, UserEvent]()
+
+emitter.On(UserLogin, func(events ...UserEvent) {
+    evt := events[0]
+    fmt.Printf("User %s (ID: %s) logged in from %s\n", evt.Username, evt.UserID, evt.IP)
 })
 
-emitter.On(UserLogout, func(args ...EventType) {
-    fmt.Println("User logged out")
+emitter.On(UserLogout, func(events ...UserEvent) {
+    evt := events[0]
+    fmt.Printf("User %s (ID: %s) logged out\n", evt.Username, evt.UserID)
 })
 
-emitter.EmitSync(UserLogin)  // Output: User logged in
-emitter.EmitSync(UserLogout) // Output: User logged out
+emitter.EmitSync(UserLogin, UserEvent{
+    UserID:   "u123",
+    Username: "alice",
+    IP:       "192.168.1.1",
+})
 ```
 
-### Listener Count and Max Listeners
+### Method Chaining
 
 ```go
-emitter := emission.NewEmitter[string]()
+emitter := emission.NewEmitter[string, int]()
 
-// Set maximum listeners (default is 10)
-emitter.SetMaxListeners(5)
-
-emitter.On("test", func(args ...string) {})
-emitter.On("test", func(args ...string) {})
-
-count := emitter.GetListenerCount("test")
-fmt.Println("Listeners:", count) // Output: Listeners: 2
-```
-
-### Complex Example: Application Events
-
-```go
-type AppEvent string
-
-const (
-    AppInit     AppEvent = "app:init"
-    AppReady    AppEvent = "app:ready"
-    AppShutdown AppEvent = "app:shutdown"
-)
-
-type App struct {
-    emitter *emission.Emitter[AppEvent]
-}
-
-func NewApp() *App {
-    app := &App{
-        emitter: emission.NewEmitter[AppEvent](),
-    }
-    
-    // Set up panic recovery
-    app.emitter.RecoverWith(func(event AppEvent, listener interface{}, err error) {
-        fmt.Printf("[ERROR] Event %s failed: %v\n", event, err)
-    })
-    
-    return app
-}
-
-func (a *App) On(event AppEvent, handler emission.Listener[AppEvent]) {
-    a.emitter.On(event, handler)
-}
-
-func (a *App) Start() {
-    a.emitter.EmitSync(AppInit)
-    // ... initialization logic ...
-    a.emitter.EmitSync(AppReady)
-}
-
-func (a *App) Stop() {
-    a.emitter.EmitSync(AppShutdown)
-}
-
-func main() {
-    app := NewApp()
-    
-    app.On(AppInit, func(args ...AppEvent) {
-        fmt.Println("Initializing...")
-    })
-    
-    app.On(AppReady, func(args ...AppEvent) {
-        fmt.Println("Application ready!")
-    })
-    
-    app.On(AppShutdown, func(args ...AppEvent) {
-        fmt.Println("Shutting down...")
-    })
-    
-    app.Start()
-    // Output:
-    // Initializing...
-    // Application ready!
-    
-    app.Stop()
-    // Output:
-    // Shutting down...
-}
+emitter.
+    SetMaxListeners(20).
+    On("event1", func(args ...int) { fmt.Println("Event 1") }).
+    On("event2", func(args ...int) { fmt.Println("Event 2") }).
+    Once("event3", func(args ...int) { fmt.Println("Event 3") }).
+    EmitSync("event1", 1, 2, 3)
 ```
 
 ## API Overview
 
 ### Creation
-- `NewEmitter[T comparable]() *Emitter[T]`: Create a new event emitter
+
+- `NewEmitter[E comparable, T any]() *Emitter[E, T]`: Create a new event emitter
+  - `E`: Event identifier type (must be comparable)
+  - `T`: Listener parameter type (can be any type)
 
 ### Adding Listeners
-- `On(event T, listener Listener[T]) *Emitter[T]`: Add a listener (alias: AddListener)
-- `Once(event T, listener Listener[T]) *Emitter[T]`: Add a one-time listener
+
+- `On(event E, listener Listener[T]) *Emitter[E, T]`: Add a listener (alias: AddListener)
+- `Once(event E, listener Listener[T]) *Emitter[E, T]`: Add a one-time listener
 
 ### Removing Listeners
-- `Off(event T, listener Listener[T]) *Emitter[T]`: Remove a listener (alias: RemoveListener)
+
+- `RemoveAllListeners(event E) *Emitter[E, T]`: Remove all listeners for a specific event
+- `Off(event E, listener Listener[T]) *Emitter[E, T]`: Kept for API compatibility (doesn't work due to Go function comparison limitations)
 
 ### Emitting Events
-- `Emit(event T, args ...T) *Emitter[T]`: Emit event asynchronously
-- `EmitSync(event T, args ...T) *Emitter[T]`: Emit event synchronously
+
+- `Emit(event E, args ...T) *Emitter[E, T]`: Emit event asynchronously
+- `EmitSync(event E, args ...T) *Emitter[E, T]`: Emit event synchronously
 
 ### Configuration
-- `SetMaxListeners(max int) *Emitter[T]`: Set max listeners per event (-1 for unlimited)
-- `GetListenerCount(event T) int`: Get number of listeners for an event
-- `RecoverWith(listener RecoveryListener[T]) *Emitter[T]`: Set panic recovery handler
+
+- `SetMaxListeners(max int) *Emitter[E, T]`: Set maximum number of listeners per event (-1 for unlimited)
+- `GetListenerCount(event E) int`: Get the number of listeners for an event
+- `RecoverWith(listener RecoveryListener[E, T]) *Emitter[E, T]`: Set panic recovery handler
 
 ### Types
-- `Listener[T comparable] func(args ...T)`: Listener function signature
-- `RecoveryListener[T comparable] func(event T, listener interface{}, err error)`: Recovery handler signature
 
-## Notes
+- `Listener[T any] func(args ...T)`: Listener function signature
+- `RecoveryListener[E comparable, T any] func(event E, listener interface{}, err error)`: Recovery handler signature
 
-- **Event Types**: Event type `T` must be comparable (string, int, custom comparable types)
-- **Async vs Sync**: `Emit()` runs listeners in goroutines, `EmitSync()` runs sequentially
+## Design Rationale
+
+### Why Dual Generics?
+
+Traditional single-generic designs force event identifiers and parameters to use the same type:
+
+```go
+// Single-generic design limitation
+emitter := NewEmitter[string]()
+emitter.On("login", func(args ...string) {
+    // Can only receive string parameters, can't handle complex User objects
+})
+```
+
+Dual-generic design solves this problem:
+
+```go
+// Dual-generic design flexibility
+emitter := NewEmitter[string, User]()
+emitter.On("login", func(users ...User) {
+    // Can use simple strings to identify events while passing complex data structures
+})
+```
+
+### Function Removal Limitations
+
+Due to Go language limitations, function values cannot be directly compared. Therefore, `RemoveListener` and `Off` methods cannot accurately identify which listener to remove. It's recommended to use `RemoveAllListeners` to clear all listeners for a specific event.
+
+## Important Notes
+
+- **Event Type**: Event identifier type `E` must be comparable (string, int, custom comparable types)
+- **Parameter Type**: Listener parameter type `T` can be any type
+- **Async vs Sync**: `Emit()` runs listeners in goroutines, `EmitSync()` executes sequentially
 - **Memory Safety**: Once listeners are automatically removed after execution
 - **Panic Handling**: Set a recovery listener to catch panics in event handlers
-- **Thread Safety**: All operations are protected by mutex for concurrent use
+- **Thread Safety**: All operations are protected by mutexes for concurrent use
+- **Function Comparison**: Functions cannot be directly compared in Go, use `RemoveAllListeners` instead of `RemoveListener`
 
-## Reference
+## Best Practices
 
-This implementation is inspired by [chuckpreslar/emission](https://github.com/chuckpreslar/emission).
+1. **Use Meaningful Event Names**: Use clear strings or constants as event identifiers
+2. **Define Event Types**: Define custom event type enums for complex applications
+3. **Use Structs**: Use structs for complex data instead of multiple parameters
+4. **Set Recovery Handlers**: Always set panic recovery handlers in production
+5. **Monitor Listener Count**: Use `GetListenerCount` to detect memory leaks
+6. **Clean Up Listeners**: Remove listeners promptly when no longer needed
+
+## Inspiration
+
+This implementation is inspired by [chuckpreslar/emission](https://github.com/chuckpreslar/emission) and extends it with a dual-generic design for better type safety and flexibility.
 
 ## License
 
 MIT License
-

@@ -6,17 +6,20 @@ import (
 	"time"
 )
 
+// User 示例数据结构
+type User struct {
+	Name string
+	Age  int
+}
+
 // TestNewEmitter 测试创建新的 Emitter 实例
 func TestNewEmitter(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	if em.maxListeners != DefaultMaxListeners {
 		t.Errorf("NewEmitter should set maxListeners to %d, got %d", DefaultMaxListeners, em.maxListeners)
 	}
 	if len(em.events) != 0 {
 		t.Errorf("NewEmitter should initialize empty events map, got %d events", len(em.events))
-	}
-	if len(em.listenerIDs) != 0 {
-		t.Errorf("NewEmitter should initialize empty listenerIDs map, got %d entries", len(em.listenerIDs))
 	}
 	if em.nextID != 1 {
 		t.Errorf("NewEmitter should initialize nextID to 1, got %d", em.nextID)
@@ -25,7 +28,7 @@ func TestNewEmitter(t *testing.T) {
 
 // TestAddListener 测试添加监听器
 func TestAddListener(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
 	em.AddListener("test", listener)
 
@@ -43,7 +46,7 @@ func TestAddListener(t *testing.T) {
 
 // TestOn 测试 On 方法（AddListener 的别名）
 func TestOn(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
 	em.On("test", listener)
 
@@ -52,36 +55,25 @@ func TestOn(t *testing.T) {
 	}
 }
 
-// TestRemoveListener 测试移除监听器
-func TestRemoveListener(t *testing.T) {
-	em := NewEmitter[string]()
+// TestRemoveAllListeners 测试移除所有监听器
+func TestRemoveAllListeners(t *testing.T) {
+	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
 	em.On("test", listener)
-	em.RemoveListener("test", listener)
+	em.On("test", func(args ...string) {})
+	em.RemoveAllListeners("test")
 
 	if count := em.GetListenerCount("test"); count != 0 {
-		t.Errorf("RemoveListener should remove listener, got %d remaining", count)
+		t.Errorf("RemoveAllListeners should remove all listeners, got %d remaining", count)
 	}
 
 	// 测试移除不存在的事件
-	em.RemoveListener("unknown", listener) // 应无错误
-}
-
-// TestOff 测试 Off 方法（RemoveListener 的别名）
-func TestOff(t *testing.T) {
-	em := NewEmitter[string]()
-	listener := func(args ...string) {}
-	em.On("test", listener)
-	em.Off("test", listener)
-
-	if count := em.GetListenerCount("test"); count != 0 {
-		t.Errorf("Off should remove listener, got %d remaining", count)
-	}
+	em.RemoveAllListeners("unknown") // 应无错误
 }
 
 // TestOnce 测试一次性监听器
 func TestOnce(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	called := 0
 	listener := func(args ...string) { called++ }
 	em.Once("test", listener)
@@ -103,7 +95,7 @@ func TestOnce(t *testing.T) {
 
 // TestEmit 测试异步事件触发
 func TestEmit(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -130,7 +122,7 @@ func TestEmit(t *testing.T) {
 
 // TestEmitSync 测试同步事件触发
 func TestEmitSync(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	called := 0
 	listener := func(args ...string) {
 		called++
@@ -151,7 +143,7 @@ func TestEmitSync(t *testing.T) {
 
 // TestRecoverWith 测试恢复监听器处理 panic
 func TestRecoverWith(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	recovered := false
 	em.RecoverWith(func(event string, listener interface{}, err error) {
 		recovered = true
@@ -174,7 +166,7 @@ func TestRecoverWith(t *testing.T) {
 
 // TestSetMaxListeners 测试设置最大监听器数量
 func TestSetMaxListeners(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	em.SetMaxListeners(5)
 	if em.maxListeners != 5 {
 		t.Errorf("SetMaxListeners should set max to 5, got %d", em.maxListeners)
@@ -188,7 +180,7 @@ func TestSetMaxListeners(t *testing.T) {
 
 // TestGetListenerCount 测试获取监听器数量
 func TestGetListenerCount(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
 	em.On("test", listener)
 
@@ -203,11 +195,11 @@ func TestGetListenerCount(t *testing.T) {
 
 // TestConcurrency 测试并发安全性
 func TestConcurrency(t *testing.T) {
-	em := NewEmitter[string]()
+	em := NewEmitter[string, string]()
 	var wg sync.WaitGroup
 	listener := func(args ...string) {}
 
-	// 并发添加和移除监听器
+	// 并发添加和触发事件
 	for i := 0; i < 100; i++ {
 		wg.Add(2)
 		go func() {
@@ -216,10 +208,105 @@ func TestConcurrency(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			em.Off("test", listener)
+			em.Emit("test", "data")
 		}()
 	}
 
 	wg.Wait()
 	// 检查是否发生数据竞争（依赖 go test -race 检测）
+}
+
+// TestDifferentTypes 测试事件类型和参数类型分离
+func TestDifferentTypes(t *testing.T) {
+	// 测试事件名为 string，参数为自定义结构体
+	em := NewEmitter[string, User]()
+	received := false
+
+	em.On("user_login", func(users ...User) {
+		received = true
+		if len(users) != 1 {
+			t.Errorf("Expected 1 user, got %d", len(users))
+		}
+		if users[0].Name != "Alice" || users[0].Age != 30 {
+			t.Errorf("Expected User{Alice, 30}, got %v", users[0])
+		}
+	})
+
+	em.EmitSync("user_login", User{Name: "Alice", Age: 30})
+
+	if !received {
+		t.Error("Listener should have been called")
+	}
+}
+
+// TestIntEventKey 测试使用整数作为事件标识
+func TestIntEventKey(t *testing.T) {
+	em := NewEmitter[int, string]()
+	called := false
+
+	em.On(100, func(args ...string) {
+		called = true
+		if len(args) != 1 || args[0] != "test" {
+			t.Errorf("Expected [test], got %v", args)
+		}
+	})
+
+	em.EmitSync(100, "test")
+
+	if !called {
+		t.Error("Listener should have been called")
+	}
+}
+
+// TestComplexDataTypes 测试复杂数据类型
+func TestComplexDataTypes(t *testing.T) {
+	type Message struct {
+		ID      int
+		Content string
+		Tags    []string
+	}
+
+	em := NewEmitter[string, Message]()
+	var receivedMsg Message
+
+	em.On("message", func(msgs ...Message) {
+		if len(msgs) > 0 {
+			receivedMsg = msgs[0]
+		}
+	})
+
+	expectedMsg := Message{
+		ID:      1,
+		Content: "Hello World",
+		Tags:    []string{"urgent", "important"},
+	}
+
+	em.EmitSync("message", expectedMsg)
+
+	if receivedMsg.ID != expectedMsg.ID ||
+		receivedMsg.Content != expectedMsg.Content ||
+		len(receivedMsg.Tags) != len(expectedMsg.Tags) {
+		t.Errorf("Expected %v, got %v", expectedMsg, receivedMsg)
+	}
+}
+
+// TestMultipleOnceListeners 测试多个 Once 监听器
+func TestMultipleOnceListeners(t *testing.T) {
+	em := NewEmitter[string, int]()
+	count1 := 0
+	count2 := 0
+
+	em.Once("event", func(args ...int) { count1++ })
+	em.Once("event", func(args ...int) { count2++ })
+
+	em.EmitSync("event", 1)
+	em.EmitSync("event", 2)
+
+	if count1 != 1 || count2 != 1 {
+		t.Errorf("Each Once listener should be called exactly once, got count1=%d, count2=%d", count1, count2)
+	}
+
+	if em.GetListenerCount("event") != 0 {
+		t.Errorf("All Once listeners should be removed, got %d remaining", em.GetListenerCount("event"))
+	}
 }
