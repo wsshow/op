@@ -28,9 +28,9 @@ func NewDeque[T any]() *deque.Deque[T] {
 }
 
 // NewEmitter 创建一个新的事件发射器对象
-// 事件类型 T 必须是 comparable 的
-func NewEmitter[T comparable]() *emission.Emitter[T] {
-	return emission.NewEmitter[T]()
+// E: 事件标识类型（必须是 comparable），T: 监听器参数类型（任意类型）
+func NewEmitter[E comparable, T any]() *emission.Emitter[E, T] {
+	return emission.NewEmitter[E, T]()
 }
 
 // LinqFrom 从切片创建一个 Linq 对象，用于链式查询
