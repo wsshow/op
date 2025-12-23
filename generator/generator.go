@@ -8,16 +8,16 @@ type Yield[T any] struct {
 	resultChan chan any // 用于接收调用者传递的返回值
 }
 
-// Yield 将值发送给调用者，并尝试接收返回值
+// Yield 将值发送给调用者，并等待接收返回值
 // 如果没有返回值，则返回 nil
 func (y *Yield[T]) Yield(value T) any {
 	y.valueChan <- value
-	select {
-	case result := <-y.resultChan:
-		return result
-	default:
-		return nil // 如果没有返回值可用，返回 nil
+	// 阻塞等待返回值或通道关闭
+	result, ok := <-y.resultChan
+	if !ok {
+		return nil // 通道已关闭
 	}
+	return result
 }
 
 // Generator 是一个泛型生成器，支持迭代生成值
@@ -64,21 +64,23 @@ func (g *Generator[T]) Next(values ...any) (value T, done bool) {
 		return value, true // 如果已完成，直接返回
 	}
 
-	// 如果提供了返回值，发送到 resultChan
-	if len(values) > 0 {
-		select {
-		case g.yield.resultChan <- values[0]:
-		case <-g.doneChan:
-			return value, true // 生成器已关闭
-		}
-	}
-
-	// 等待生成的下一个值或完成信号
+	// 先等待生成的下一个值或完成信号
 	select {
 	case val, ok := <-g.yield.valueChan:
 		if !ok {
 			g.isDone = true
 			return value, true // 通道关闭，表示生成结束
+		}
+		// 发送返回值（如果提供）或 nil
+		var result any
+		if len(values) > 0 {
+			result = values[0]
+		}
+		select {
+		case g.yield.resultChan <- result:
+		case <-g.doneChan:
+			g.isDone = true
+			return value, true
 		}
 		return val, false
 	case <-g.doneChan:
