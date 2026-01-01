@@ -30,17 +30,23 @@ func TestNewEmitter(t *testing.T) {
 func TestAddListener(t *testing.T) {
 	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
-	em.AddListener("test", listener)
+	unsubscribe := em.AddListener("test", listener)
 
 	if count := em.GetListenerCount("test"); count != 1 {
 		t.Errorf("AddListener should add one listener, got %d", count)
 	}
 
+	// 测试取消监听器
+	unsubscribe()
+	if count := em.GetListenerCount("test"); count != 0 {
+		t.Errorf("Unsubscribe should remove listener, got %d", count)
+	}
+
 	// 测试超过最大监听器数量的警告
 	em.SetMaxListeners(1)
-	em.AddListener("test", func(args ...string) {}) // 应打印警告
-	if count := em.GetListenerCount("test"); count != 2 {
-		t.Errorf("AddListener should add second listener despite warning, got %d", count)
+	em.AddListener("test", func(args ...string) {}) // 如果设置了logger会记录警告
+	if count := em.GetListenerCount("test"); count != 1 {
+		t.Errorf("AddListener should add listener despite warning, got %d", count)
 	}
 }
 
@@ -48,10 +54,16 @@ func TestAddListener(t *testing.T) {
 func TestOn(t *testing.T) {
 	em := NewEmitter[string, string]()
 	listener := func(args ...string) {}
-	em.On("test", listener)
+	unsubscribe := em.On("test", listener)
 
 	if count := em.GetListenerCount("test"); count != 1 {
 		t.Errorf("On should add one listener, got %d", count)
+	}
+
+	// 测试取消
+	unsubscribe()
+	if count := em.GetListenerCount("test"); count != 0 {
+		t.Errorf("Unsubscribe should remove listener, got %d", count)
 	}
 }
 
@@ -112,12 +124,14 @@ func TestEmit(t *testing.T) {
 		}
 	}
 
-	em.On("test", listener1).On("test", listener2)
+	em.On("test", listener1)
+	em.On("test", listener2)
 	em.Emit("test", "a", "b")
 	wg.Wait()
 
 	// 测试不存在的事件
-	em.Emit("unknown") // 应无错误
+	em.Emit("unknown")                // 应无错误
+	time.Sleep(50 * time.Millisecond) // 等待异步操作完成
 }
 
 // TestEmitSync 测试同步事件触发
@@ -145,10 +159,14 @@ func TestEmitSync(t *testing.T) {
 func TestRecoverWith(t *testing.T) {
 	em := NewEmitter[string, string]()
 	recovered := false
-	em.RecoverWith(func(event string, listener interface{}, err error) {
+	em.RecoverWith(func(event string, listener interface{}, panicValue interface{}) {
 		recovered = true
-		if err == nil {
-			t.Error("RecoverWith should receive an error")
+		if panicValue == nil {
+			t.Error("RecoverWith should receive a panic value")
+		}
+		// 验证 panic 值是预期的字符串
+		if panicStr, ok := panicValue.(string); !ok || panicStr != "test panic" {
+			t.Errorf("Expected panic value 'test panic', got %v", panicValue)
 		}
 	})
 
@@ -222,7 +240,7 @@ func TestDifferentTypes(t *testing.T) {
 	em := NewEmitter[string, User]()
 	received := false
 
-	em.On("user_login", func(users ...User) {
+	unsubscribe := em.On("user_login", func(users ...User) {
 		received = true
 		if len(users) != 1 {
 			t.Errorf("Expected 1 user, got %d", len(users))
@@ -231,6 +249,7 @@ func TestDifferentTypes(t *testing.T) {
 			t.Errorf("Expected User{Alice, 30}, got %v", users[0])
 		}
 	})
+	defer unsubscribe()
 
 	em.EmitSync("user_login", User{Name: "Alice", Age: 30})
 
@@ -308,5 +327,106 @@ func TestMultipleOnceListeners(t *testing.T) {
 
 	if em.GetListenerCount("event") != 0 {
 		t.Errorf("All Once listeners should be removed, got %d remaining", em.GetListenerCount("event"))
+	}
+}
+
+// TestUnsubscribe 测试取消函数
+func TestUnsubscribe(t *testing.T) {
+	em := NewEmitter[string, string]()
+	called := 0
+
+	unsubscribe := em.On("test", func(args ...string) {
+		called++
+	})
+
+	em.EmitSync("test")
+	if called != 1 {
+		t.Errorf("Expected 1 call, got %d", called)
+	}
+
+	// 取消监听器
+	unsubscribe()
+
+	if em.GetListenerCount("test") != 0 {
+		t.Errorf("Expected 0 listeners after unsubscribe, got %d", em.GetListenerCount("test"))
+	}
+
+	em.EmitSync("test")
+	if called != 1 {
+		t.Errorf("Expected still 1 call after unsubscribe, got %d", called)
+	}
+}
+
+// TestOnceUnsubscribe 测试Once监听器的取消
+func TestOnceUnsubscribe(t *testing.T) {
+	em := NewEmitter[string, string]()
+	called := 0
+
+	unsubscribe := em.Once("test", func(args ...string) {
+		called++
+	})
+
+	// 在触发前取消
+	unsubscribe()
+
+	if em.GetListenerCount("test") != 0 {
+		t.Errorf("Expected 0 listeners after unsubscribe, got %d", em.GetListenerCount("test"))
+	}
+
+	em.EmitSync("test")
+	if called != 0 {
+		t.Errorf("Expected 0 calls after unsubscribe, got %d", called)
+	}
+}
+
+// TestEmitAsyncBehavior 测试Emit的真正异步行为
+func TestEmitAsyncBehavior(t *testing.T) {
+	em := NewEmitter[string, string]()
+	done := make(chan bool)
+
+	em.On("test", func(args ...string) {
+		time.Sleep(100 * time.Millisecond)
+		done <- true
+	})
+
+	start := time.Now()
+	em.Emit("test")
+	elapsed := time.Since(start)
+
+	// Emit应该立即返回
+	if elapsed > 50*time.Millisecond {
+		t.Errorf("Emit should return immediately, took %v", elapsed)
+	}
+
+	// 等待监听器完成
+	select {
+	case <-done:
+		// 成功
+	case <-time.After(200 * time.Millisecond):
+		t.Error("Listener did not complete")
+	}
+}
+
+// TestEmitWait 测试EmitWait会等待
+func TestEmitWait(t *testing.T) {
+	em := NewEmitter[string, string]()
+	called := false
+
+	em.On("test", func(args ...string) {
+		time.Sleep(100 * time.Millisecond)
+		called = true
+	})
+
+	start := time.Now()
+	em.EmitWait("test")
+	elapsed := time.Since(start)
+
+	// EmitWait应该等待监听器完成
+	if elapsed < 100*time.Millisecond {
+		t.Errorf("EmitWait should wait for listeners, took only %v", elapsed)
+	}
+
+	if !called {
+		t.Error("Listener should have been called")
 	}
 }
