@@ -9,13 +9,13 @@ const DefaultMaxListeners = 10
 
 // Logger 定义日志接口，用于记录警告和错误信息
 type Logger interface {
-	Warnf(format string, args ...interface{})
+	Warnf(format string, args ...any)
 }
 
 // RecoveryListener 定义恢复监听器的签名，用于处理 panic
 // E: 事件类型，T: 监听器参数类型
 // panicValue: 原始的 panic 值，可以是任意类型
-type RecoveryListener[E comparable, T any] func(event E, listener interface{}, panicValue interface{})
+type RecoveryListener[E comparable, T any] func(event E, listener any, panicValue any)
 
 // Listener 定义监听器函数的签名，接受泛型参数
 type Listener[T any] func(args ...T)
@@ -49,14 +49,11 @@ func NewEmitter[E comparable, T any]() *Emitter[E, T] {
 	}
 }
 
-// AddListener 添加监听器到指定事件
-// 参数 event: 事件标识
-// 参数 listener: 监听器函数
+// addListener 内部方法，添加监听器到指定事件
+// 参数 once: 是否为一次性监听器
 // 返回一个取消函数，调用该函数可移除此监听器
-// 如果监听器数量超过 maxListeners，会通过 logger 记录警告
-func (e *Emitter[E, T]) AddListener(event E, listener Listener[T]) func() {
+func (e *Emitter[E, T]) addListener(event E, listener Listener[T], once bool) func() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	if e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners {
 		if e.logger != nil {
@@ -69,9 +66,10 @@ func (e *Emitter[E, T]) AddListener(event E, listener Listener[T]) func() {
 	wrapper := &listenerWrapper[T]{
 		id:       id,
 		listener: listener,
-		isOnce:   false,
+		isOnce:   once,
 	}
 	e.events[event] = append(e.events[event], wrapper)
+	e.mu.Unlock()
 
 	// 返回取消函数
 	return func() {
@@ -79,10 +77,28 @@ func (e *Emitter[E, T]) AddListener(event E, listener Listener[T]) func() {
 	}
 }
 
+// AddListener 添加监听器到指定事件
+// 参数 event: 事件标识
+// 参数 listener: 监听器函数
+// 返回一个取消函数，调用该函数可移除此监听器
+// 如果监听器数量超过 maxListeners，会通过 logger 记录警告
+func (e *Emitter[E, T]) AddListener(event E, listener Listener[T]) func() {
+	return e.addListener(event, listener, false)
+}
+
 // On 是 AddListener 的别名
 // 返回一个取消函数，调用该函数可移除此监听器
 func (e *Emitter[E, T]) On(event E, listener Listener[T]) func() {
-	return e.AddListener(event, listener)
+	return e.addListener(event, listener, false)
+}
+
+// Once 添加一个只触发一次的监听器
+// 参数 event: 事件标识
+// 参数 listener: 监听器函数
+// 返回一个取消函数，调用该函数可在触发前移除此监听器
+// 触发后自动移除
+func (e *Emitter[E, T]) Once(event E, listener Listener[T]) func() {
+	return e.addListener(event, listener, true)
 }
 
 // removeListenerByID 通过 ID 移除监听器（内部方法）
@@ -99,13 +115,11 @@ func (e *Emitter[E, T]) removeListenerByID(event E, id uint64) {
 	// 查找并使用 swap-remove 技术删除（交换最后一个元素，然后截断）
 	for i, wrapper := range listeners {
 		if wrapper.id == id {
-			// 将最后一个元素与当前元素交换
 			lastIdx := len(listeners) - 1
 			listeners[i] = listeners[lastIdx]
 			listeners[lastIdx] = nil // 避免内存泄漏
 			e.events[event] = listeners[:lastIdx]
 
-			// 如果列表为空，删除事件
 			if lastIdx == 0 {
 				delete(e.events, event)
 			}
@@ -123,79 +137,53 @@ func (e *Emitter[E, T]) RemoveAllListeners(event E) *Emitter[E, T] {
 	return e
 }
 
-// removeOnceListeners 移除已触发的 once 监听器（内部方法）
-// 参数 event: 事件标识
-// 参数 onceIDs: 需要移除的监听器 ID 列表
-// 使用就地过滤技术，避免额外的内存分配
-func (e *Emitter[E, T]) removeOnceListeners(event E, onceIDs []uint64) {
-	if len(onceIDs) == 0 {
-		return
-	}
-
+// prepareEmit 原子地复制监听器列表并移除 once 监听器
+// 在持有锁的情况下完成两个操作，避免 once 监听器在并发 Emit 中被重复触发
+// 返回要执行的监听器副本，若无监听器则返回 nil
+func (e *Emitter[E, T]) prepareEmit(event E) []*listenerWrapper[T] {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	listeners, exists := e.events[event]
-	if !exists {
-		return
+	listeners, ok := e.events[event]
+	if !ok || len(listeners) == 0 {
+		return nil
 	}
 
-	// 构建 ID 集合用于快速查找
-	onceIDSet := make(map[uint64]bool, len(onceIDs))
-	for _, id := range onceIDs {
-		onceIDSet[id] = true
+	// 复制监听器列表供调用方使用
+	result := make([]*listenerWrapper[T], len(listeners))
+	copy(result, listeners)
+
+	// 检查是否存在 once 监听器
+	hasOnce := false
+	for _, w := range listeners {
+		if w.isOnce {
+			hasOnce = true
+			break
+		}
+	}
+	if !hasOnce {
+		return result
 	}
 
-	// 就地过滤，避免重新分配
+	// 就地过滤，从源列表中移除 once 监听器
 	n := 0
-	for _, wrapper := range listeners {
-		if !onceIDSet[wrapper.id] {
-			listeners[n] = wrapper
+	for _, w := range listeners {
+		if !w.isOnce {
+			listeners[n] = w
 			n++
 		}
 	}
-
 	// 清除剩余引用，避免内存泄漏
 	for i := n; i < len(listeners); i++ {
 		listeners[i] = nil
 	}
-
 	if n == 0 {
 		delete(e.events, event)
 	} else {
 		e.events[event] = listeners[:n]
 	}
-}
 
-// Once 添加一个只触发一次的监听器
-// 参数 event: 事件标识
-// 参数 listener: 监听器函数
-// 返回一个取消函数，调用该函数可在触发前移除此监听器
-// 触发后自动移除
-func (e *Emitter[E, T]) Once(event E, listener Listener[T]) func() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners {
-		if e.logger != nil {
-			e.logger.Warnf("event `%v` exceeds max listeners limit of %d", event, e.maxListeners)
-		}
-	}
-
-	id := e.nextID
-	e.nextID++
-
-	wrapper := &listenerWrapper[T]{
-		id:       id,
-		listener: listener,
-		isOnce:   true,
-	}
-	e.events[event] = append(e.events[event], wrapper)
-
-	// 返回取消函数
-	return func() {
-		e.removeListenerByID(event, id)
-	}
+	return result
 }
 
 // Emit 异步触发事件的所有监听器（Fire-and-forget）
@@ -203,41 +191,23 @@ func (e *Emitter[E, T]) Once(event E, listener Listener[T]) func() {
 // 参数 args: 传递给监听器的参数
 // 注意：此方法立即返回，不等待监听器执行完成
 func (e *Emitter[E, T]) Emit(event E, args ...T) {
-	e.mu.Lock()
-	listeners, ok := e.events[event]
-	if !ok {
-		e.mu.Unlock()
+	listeners := e.prepareEmit(event)
+	if len(listeners) == 0 {
 		return
 	}
-	// 复制监听器列表以避免在执行期间被修改
-	listenersCopy := make([]*listenerWrapper[T], len(listeners))
-	copy(listenersCopy, listeners)
 
-	// 收集需要移除的 once 监听器的 ID
-	var onceIDs []uint64
-	for _, wrapper := range listenersCopy {
-		if wrapper.isOnce {
-			onceIDs = append(onceIDs, wrapper.id)
-		}
-	}
-	e.mu.Unlock()
-
-	// 启动 goroutine 处理监听器执行和清理
 	go func() {
 		var wg sync.WaitGroup
-		wg.Add(len(listenersCopy))
+		wg.Add(len(listeners))
 
-		for _, wrapper := range listenersCopy {
-			go func(w *listenerWrapper[T]) {
+		for _, wrapper := range listeners {
+			go func() {
 				defer wg.Done()
-				e.callListener(event, w.listener, args...)
-			}(wrapper)
+				e.callListener(event, wrapper.listener, args...)
+			}()
 		}
 
 		wg.Wait()
-
-		// 移除已触发的 once 监听器
-		e.removeOnceListeners(event, onceIDs)
 	}()
 }
 
@@ -246,39 +216,22 @@ func (e *Emitter[E, T]) Emit(event E, args ...T) {
 // 参数 args: 传递给监听器的参数
 // 注意：此方法会阻塞直到所有监听器执行完成
 func (e *Emitter[E, T]) EmitWait(event E, args ...T) {
-	e.mu.Lock()
-	listeners, ok := e.events[event]
-	if !ok {
-		e.mu.Unlock()
+	listeners := e.prepareEmit(event)
+	if len(listeners) == 0 {
 		return
 	}
-	// 复制监听器列表以避免在执行期间被修改
-	listenersCopy := make([]*listenerWrapper[T], len(listeners))
-	copy(listenersCopy, listeners)
-
-	// 收集需要移除的 once 监听器的 ID
-	var onceIDs []uint64
-	for _, wrapper := range listenersCopy {
-		if wrapper.isOnce {
-			onceIDs = append(onceIDs, wrapper.id)
-		}
-	}
-	e.mu.Unlock()
 
 	var wg sync.WaitGroup
-	wg.Add(len(listenersCopy))
+	wg.Add(len(listeners))
 
-	for _, wrapper := range listenersCopy {
-		go func(w *listenerWrapper[T]) {
+	for _, wrapper := range listeners {
+		go func() {
 			defer wg.Done()
-			e.callListener(event, w.listener, args...)
-		}(wrapper)
+			e.callListener(event, wrapper.listener, args...)
+		}()
 	}
 
 	wg.Wait()
-
-	// 移除已触发的 once 监听器
-	e.removeOnceListeners(event, onceIDs)
 }
 
 // EmitSync 同步触发事件的所有监听器
@@ -286,32 +239,14 @@ func (e *Emitter[E, T]) EmitWait(event E, args ...T) {
 // 参数 args: 传递给监听器的参数
 // 注意：此方法按顺序同步执行所有监听器
 func (e *Emitter[E, T]) EmitSync(event E, args ...T) {
-	e.mu.Lock()
-	listeners, ok := e.events[event]
-	if !ok {
-		e.mu.Unlock()
+	listeners := e.prepareEmit(event)
+	if len(listeners) == 0 {
 		return
 	}
-	// 复制监听器列表
-	listenersCopy := make([]*listenerWrapper[T], len(listeners))
-	copy(listenersCopy, listeners)
 
-	// 收集需要移除的 once 监听器的 ID
-	var onceIDs []uint64
-	for _, wrapper := range listenersCopy {
-		if wrapper.isOnce {
-			onceIDs = append(onceIDs, wrapper.id)
-		}
-	}
-	e.mu.Unlock()
-
-	// 同步执行监听器
-	for _, wrapper := range listenersCopy {
+	for _, wrapper := range listeners {
 		e.callListener(event, wrapper.listener, args...)
 	}
-
-	// 移除已触发的 once 监听器
-	e.removeOnceListeners(event, onceIDs)
 }
 
 // callListener 调用监听器并处理可能的 panic
