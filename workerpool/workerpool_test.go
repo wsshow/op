@@ -213,7 +213,7 @@ func TestIdleWorkerShutdown(t *testing.T) {
 	}
 
 	wg.Wait()
-	time.Sleep(idleTimeout + 100*time.Millisecond) // 等待空闲超时
+	time.Sleep(DefaultIdleTimeout + 100*time.Millisecond) // 等待空闲超时
 	pool.Submit(func() { atomic.AddInt32(&counter, 1) })
 	time.Sleep(10 * time.Millisecond) // 确保新任务被处理
 
