@@ -1,25 +1,28 @@
+// Package deque 提供了一个基于环形缓冲区的高性能泛型双端队列实现。
+// 支持 O(1) 的头尾插入/删除操作，以及自动扩缩容。
 package deque
 
 import "fmt"
 
-// minCapacity 是双端队列的最小容量，必须是2的幂，用于位运算取模
+// minCapacity 是双端队列的最小容量，必须是 2 的幂以支持位运算取模。
 const minCapacity = 16
 
-// Deque 表示一个双端队列实例，支持泛型类型T
+// Deque 是一个基于环形缓冲区的双端队列，支持泛型类型 T。
+// 零值可直接使用，无需显式初始化。
 type Deque[T any] struct {
-	buffer  []T // 存储元素的缓冲区
-	headIdx int // 头部索引
-	tailIdx int // 尾部索引
-	size    int // 当前元素数量
-	baseCap int // 基础容量
+	buffer  []T
+	headIdx int
+	tailIdx int
+	size    int
+	baseCap int
 }
 
-// New 创建并返回一个新的双端队列实例
+// New 创建并返回一个新的双端队列实例。
 func New[T any]() *Deque[T] {
 	return &Deque[T]{baseCap: minCapacity}
 }
 
-// Capacity 返回当前缓冲区的容量，若队列为nil则返回0
+// Capacity 返回当前缓冲区的容量。若队列为 nil 则返回 0。
 func (d *Deque[T]) Capacity() int {
 	if d == nil {
 		return 0
@@ -27,7 +30,7 @@ func (d *Deque[T]) Capacity() int {
 	return len(d.buffer)
 }
 
-// Size 返回当前存储的元素数量，若队列为nil则返回0
+// Size 返回当前存储的元素数量。若队列为 nil 则返回 0。
 func (d *Deque[T]) Size() int {
 	if d == nil {
 		return 0
@@ -35,7 +38,7 @@ func (d *Deque[T]) Size() int {
 	return d.size
 }
 
-// PushBack 在队列尾部添加元素，支持FIFO和LIFO操作
+// PushBack 在队列尾部添加元素。
 func (d *Deque[T]) PushBack(elem T) {
 	d.ensureCapacity()
 	d.buffer[d.tailIdx] = elem
@@ -43,7 +46,7 @@ func (d *Deque[T]) PushBack(elem T) {
 	d.size++
 }
 
-// PushFront 在队列头部添加元素
+// PushFront 在队列头部添加元素。
 func (d *Deque[T]) PushFront(elem T) {
 	d.ensureCapacity()
 	d.headIdx = d.prevIndex(d.headIdx)
@@ -51,33 +54,35 @@ func (d *Deque[T]) PushFront(elem T) {
 	d.size++
 }
 
-// PopFront 从队列头部移除并返回元素，若队列为空则panic
+// PopFront 从队列头部移除并返回元素。若队列为空则 panic。
 func (d *Deque[T]) PopFront() T {
 	if d.size == 0 {
 		panic("deque: PopFront() called on empty queue")
 	}
+	var zero T
 	elem := d.buffer[d.headIdx]
-	d.buffer[d.headIdx] = *new(T) // 清空元素
+	d.buffer[d.headIdx] = zero
 	d.headIdx = d.nextIndex(d.headIdx)
 	d.size--
 	d.shrinkIfNeeded()
 	return elem
 }
 
-// PopBack 从队列尾部移除并返回元素，若队列为空则panic
+// PopBack 从队列尾部移除并返回元素。若队列为空则 panic。
 func (d *Deque[T]) PopBack() T {
 	if d.size == 0 {
 		panic("deque: PopBack() called on empty queue")
 	}
+	var zero T
 	d.tailIdx = d.prevIndex(d.tailIdx)
 	elem := d.buffer[d.tailIdx]
-	d.buffer[d.tailIdx] = *new(T) // 清空元素
+	d.buffer[d.tailIdx] = zero
 	d.size--
 	d.shrinkIfNeeded()
 	return elem
 }
 
-// Front 返回队列头部元素，若队列为空则panic
+// Front 返回队列头部元素。若队列为空则 panic。
 func (d *Deque[T]) Front() T {
 	if d.size == 0 {
 		panic("deque: Front() called when empty")
@@ -85,7 +90,7 @@ func (d *Deque[T]) Front() T {
 	return d.buffer[d.headIdx]
 }
 
-// Back 返回队列尾部元素，若队列为空则panic
+// Back 返回队列尾部元素。若队列为空则 panic。
 func (d *Deque[T]) Back() T {
 	if d.size == 0 {
 		panic("deque: Back() called when empty")
@@ -93,33 +98,30 @@ func (d *Deque[T]) Back() T {
 	return d.buffer[d.prevIndex(d.tailIdx)]
 }
 
-// At 返回指定索引处的元素，不移除元素，若索引无效则panic
+// At 返回指定索引处的元素（不移除）。若索引无效则 panic。
 func (d *Deque[T]) At(index int) T {
 	d.checkIndex(index)
 	return d.buffer[d.realIndex(index)]
 }
 
-// Set 将指定索引处的值设置为item，若索引无效则panic
+// Set 将指定索引处的值设置为 item。若索引无效则 panic。
 func (d *Deque[T]) Set(index int, item T) {
 	d.checkIndex(index)
 	d.buffer[d.realIndex(index)] = item
 }
 
-// Clear 清空队列但保留当前容量
+// Clear 清空队列中的所有元素，但保留当前缓冲区容量。
 func (d *Deque[T]) Clear() {
 	if d.size == 0 {
 		return
 	}
-	// 清空整个缓冲区内容（避免内存泄漏）
-	for i := range d.buffer {
-		d.buffer[i] = *new(T)
-	}
+	clear(d.buffer)
 	d.headIdx = 0
 	d.tailIdx = 0
 	d.size = 0
 }
 
-// Grow 确保队列有足够空间容纳n个额外元素，若n为负则panic
+// Grow 确保队列有足够空间容纳 n 个额外元素。若 n 为负则 panic。
 func (d *Deque[T]) Grow(n int) {
 	if n < 0 {
 		panic("deque.Grow: negative count")
@@ -131,7 +133,8 @@ func (d *Deque[T]) Grow(n int) {
 	d.resize(newCap)
 }
 
-// Rotate 将队列旋转n步，正数向后，负数向前，若元素少于2则无操作
+// Rotate 将队列元素旋转 steps 步。正数向前旋转，负数向后旋转。
+// 元素少于 2 个时无操作。
 func (d *Deque[T]) Rotate(steps int) {
 	if d == nil || d.size <= 1 {
 		return
@@ -141,24 +144,18 @@ func (d *Deque[T]) Rotate(steps int) {
 		return
 	}
 
-	// 正向旋转(steps > 0): 将前面的元素移到后面
-	// 负向旋转(steps < 0): 将后面的元素移到前面
 	if steps > 0 {
-		// 将前 steps 个元素移到后面
 		for i := 0; i < steps; i++ {
-			elem := d.PopFront()
-			d.PushBack(elem)
+			d.PushBack(d.PopFront())
 		}
 	} else {
-		// 将后 -steps 个元素移到前面
 		for i := 0; i < -steps; i++ {
-			elem := d.PopBack()
-			d.PushFront(elem)
+			d.PushFront(d.PopBack())
 		}
 	}
 }
 
-// Index 返回第一个满足条件的元素索引，从头开始搜索，未找到返回-1
+// Index 返回第一个满足条件的元素索引（从头部开始搜索）。未找到返回 -1。
 func (d *Deque[T]) Index(match func(T) bool) int {
 	if d == nil || d.size == 0 {
 		return -1
@@ -166,7 +163,7 @@ func (d *Deque[T]) Index(match func(T) bool) int {
 	return d.search(match, true)
 }
 
-// RIndex 从尾部开始搜索第一个满足条件的元素索引，返回从头部计算的索引
+// RIndex 从尾部开始搜索第一个满足条件的元素索引。返回从头部计算的索引，未找到返回 -1。
 func (d *Deque[T]) RIndex(match func(T) bool) int {
 	if d == nil || d.size == 0 {
 		return -1
@@ -174,7 +171,7 @@ func (d *Deque[T]) RIndex(match func(T) bool) int {
 	return d.search(match, false)
 }
 
-// Insert 在指定位置插入元素，若索引超出范围则添加到头部或尾部
+// Insert 在指定位置插入元素。若索引 <= 0 则添加到头部，>= Size 则添加到尾部。
 func (d *Deque[T]) Insert(at int, item T) {
 	if at <= 0 {
 		d.PushFront(item)
@@ -187,7 +184,7 @@ func (d *Deque[T]) Insert(at int, item T) {
 	d.insertAtMiddle(at, item)
 }
 
-// Remove 移除并返回指定索引处的元素，若索引无效则panic
+// Remove 移除并返回指定索引处的元素。若索引无效则 panic。
 func (d *Deque[T]) Remove(at int) T {
 	d.checkIndex(at)
 	if at == 0 {
@@ -199,7 +196,8 @@ func (d *Deque[T]) Remove(at int) T {
 	return d.removeFromMiddle(at)
 }
 
-// SetBaseCap 设置基础容量，确保至少能存储指定数量的元素
+// SetBaseCap 设置基础容量（向上取整到 2 的幂）。
+// 缩容时不会缩小到基础容量以下。
 func (d *Deque[T]) SetBaseCap(baseCap int) {
 	newCap := minCapacity
 	for newCap < baseCap {
@@ -212,7 +210,7 @@ func (d *Deque[T]) SetBaseCap(baseCap int) {
 	}
 }
 
-// Swap 交换两个索引处的值，若索引无效则panic
+// Swap 交换两个索引处的值。若索引无效则 panic。
 func (d *Deque[T]) Swap(idxA, idxB int) {
 	d.checkIndex(idxA)
 	d.checkIndex(idxB)
@@ -222,31 +220,29 @@ func (d *Deque[T]) Swap(idxA, idxB int) {
 	}
 }
 
-// 以下为内部辅助方法
-
-// checkIndex 检查索引是否有效
+// checkIndex 检查索引是否有效。
 func (d *Deque[T]) checkIndex(i int) {
 	if i < 0 || i >= d.size {
 		panic(fmt.Sprintf("deque: index out of range %d with length %d", i, d.size))
 	}
 }
 
-// realIndex 计算实际缓冲区索引
+// realIndex 将逻辑索引转换为缓冲区中的实际索引。
 func (d *Deque[T]) realIndex(i int) int {
 	return (d.headIdx + i) & (len(d.buffer) - 1)
 }
 
-// prevIndex 计算前一个索引位置
+// prevIndex 返回环形缓冲区中 i 的前一个索引。
 func (d *Deque[T]) prevIndex(i int) int {
 	return (i - 1) & (len(d.buffer) - 1)
 }
 
-// nextIndex 计算下一个索引位置
+// nextIndex 返回环形缓冲区中 i 的下一个索引。
 func (d *Deque[T]) nextIndex(i int) int {
 	return (i + 1) & (len(d.buffer) - 1)
 }
 
-// ensureCapacity 在队列满时扩展容量
+// ensureCapacity 确保缓冲区有空间容纳新元素，必要时进行扩容。
 func (d *Deque[T]) ensureCapacity() {
 	if d.buffer == nil {
 		if d.baseCap == 0 {
@@ -258,14 +254,19 @@ func (d *Deque[T]) ensureCapacity() {
 	}
 }
 
-// shrinkIfNeeded 在队列占用小于1/4时缩减容量
+// shrinkIfNeeded 在队列占用低于缓冲区容量的 1/4 时缩减容量。
+// 缩容后的容量不会低于 baseCap。
 func (d *Deque[T]) shrinkIfNeeded() {
 	if len(d.buffer) > d.baseCap && (d.size<<2) <= len(d.buffer) {
-		d.resize(d.size << 1)
+		newCap := d.size << 1
+		if newCap < d.baseCap {
+			newCap = d.baseCap
+		}
+		d.resize(newCap)
 	}
 }
 
-// resize 调整队列到指定大小
+// resize 重新分配缓冲区并复制现有元素。
 func (d *Deque[T]) resize(newSize int) {
 	newBuffer := make([]T, newSize)
 	if d.size > 0 {
@@ -281,16 +282,16 @@ func (d *Deque[T]) resize(newSize int) {
 	d.tailIdx = d.size
 }
 
-// calculateNewCapacity 计算需要的新容量
+// calculateNewCapacity 计算容纳 n 个额外元素所需的最小 2 的幂容量。
 func (d *Deque[T]) calculateNewCapacity(n int) int {
-	cap := max(d.Capacity(), minCapacity)
-	for cap < d.size+n {
-		cap <<= 1
+	newCap := max(d.Capacity(), minCapacity)
+	for newCap < d.size+n {
+		newCap <<= 1
 	}
-	return cap
+	return newCap
 }
 
-// search 执行线性搜索，正向或反向
+// search 在缓冲区中执行线性搜索。forward 为 true 时从头部搜索，否则从尾部搜索。
 func (d *Deque[T]) search(match func(T) bool, forward bool) int {
 	modBits := len(d.buffer) - 1
 	if forward {
@@ -309,7 +310,7 @@ func (d *Deque[T]) search(match func(T) bool, forward bool) int {
 	return -1
 }
 
-// insertAtMiddle 在中间位置插入元素
+// insertAtMiddle 在中间位置插入元素，选择移动较少元素的方向。
 func (d *Deque[T]) insertAtMiddle(at int, item T) {
 	if at*2 < d.size {
 		d.PushFront(item)
@@ -328,7 +329,7 @@ func (d *Deque[T]) insertAtMiddle(at int, item T) {
 	}
 }
 
-// removeFromMiddle 从中间移除元素
+// removeFromMiddle 从中间位置移除元素，选择移动较少元素的方向。
 func (d *Deque[T]) removeFromMiddle(at int) T {
 	realIdx := d.realIndex(at)
 	elem := d.buffer[realIdx]
@@ -348,12 +349,4 @@ func (d *Deque[T]) removeFromMiddle(at int) T {
 		d.PopBack()
 	}
 	return elem
-}
-
-// max 返回两个整数中的较大值
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
