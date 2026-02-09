@@ -1,3 +1,5 @@
+// Package emission 提供了一个类型安全的泛型事件发射器实现，
+// 支持同步/异步事件触发、一次性监听器、并发度控制和 panic 恢复。
 package emission
 
 import (
@@ -36,6 +38,7 @@ type Emitter[E comparable, T any] struct {
 	maxListeners int                         // 每个事件的最大监听器数量，用于调试内存泄漏
 	nextID       uint64                      // 下一个监听器的ID
 	logger       Logger                      // 可选的日志记录器
+	semaphore    chan struct{}               // 并发度限制信号量，nil 表示无限制
 }
 
 // NewEmitter 创建一个新的泛型事件发射器
@@ -103,6 +106,7 @@ func (e *Emitter[E, T]) Once(event E, listener Listener[T]) func() {
 
 // removeListenerByID 通过 ID 移除监听器（内部方法）
 // 使用 swap-remove 技术优化性能，时间复杂度 O(1)
+// 注意：swap-remove 不保留监听器的注册顺序
 func (e *Emitter[E, T]) removeListenerByID(event E, id uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -138,16 +142,20 @@ func (e *Emitter[E, T]) RemoveAllListeners(event E) *Emitter[E, T] {
 }
 
 // prepareEmit 原子地复制监听器列表并移除 once 监听器
-// 在持有锁的情况下完成两个操作，避免 once 监听器在并发 Emit 中被重复触发
-// 返回要执行的监听器副本，若无监听器则返回 nil
-func (e *Emitter[E, T]) prepareEmit(event E) []*listenerWrapper[T] {
+// 在持有锁的情况下完成快照操作，避免 once 监听器在并发 Emit 中被重复触发
+// 返回要执行的监听器副本、信号量快照和恢复监听器快照，若无监听器则返回 nil
+func (e *Emitter[E, T]) prepareEmit(event E) ([]*listenerWrapper[T], chan struct{}, RecoveryListener[E, T]) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	listeners, ok := e.events[event]
 	if !ok || len(listeners) == 0 {
-		return nil
+		return nil, nil, nil
 	}
+
+	// 快照信号量和恢复监听器引用，保证后续使用无数据竞争
+	sem := e.semaphore
+	recoverer := e.recoverer
 
 	// 复制监听器列表供调用方使用
 	result := make([]*listenerWrapper[T], len(listeners))
@@ -162,7 +170,7 @@ func (e *Emitter[E, T]) prepareEmit(event E) []*listenerWrapper[T] {
 		}
 	}
 	if !hasOnce {
-		return result
+		return result, sem, recoverer
 	}
 
 	// 就地过滤，从源列表中移除 once 监听器
@@ -183,31 +191,36 @@ func (e *Emitter[E, T]) prepareEmit(event E) []*listenerWrapper[T] {
 		e.events[event] = listeners[:n]
 	}
 
-	return result
+	return result, sem, recoverer
 }
 
 // Emit 异步触发事件的所有监听器（Fire-and-forget）
 // 参数 event: 事件标识
 // 参数 args: 传递给监听器的参数
 // 注意：此方法立即返回，不等待监听器执行完成
+// 若通过 SetConcurrency 设置了并发度，则使用 worker pool 限制 goroutine 创建数量
 func (e *Emitter[E, T]) Emit(event E, args ...T) {
-	listeners := e.prepareEmit(event)
+	listeners, sem, recoverer := e.prepareEmit(event)
 	if len(listeners) == 0 {
 		return
 	}
 
 	go func() {
-		var wg sync.WaitGroup
-		wg.Add(len(listeners))
-
-		for _, wrapper := range listeners {
-			go func() {
-				defer wg.Done()
-				e.callListener(event, wrapper.listener, args...)
-			}()
+		if sem == nil {
+			// 无并发限制：直接为每个监听器创建 goroutine
+			var wg sync.WaitGroup
+			wg.Add(len(listeners))
+			for _, wrapper := range listeners {
+				go func() {
+					defer wg.Done()
+					e.callListener(event, wrapper.listener, recoverer, args...)
+				}()
+			}
+			wg.Wait()
+		} else {
+			// 有并发限制：使用 worker pool 模式
+			e.runWithWorkerPool(event, listeners, sem, recoverer, args...)
 		}
-
-		wg.Wait()
 	}()
 }
 
@@ -215,47 +228,78 @@ func (e *Emitter[E, T]) Emit(event E, args ...T) {
 // 参数 event: 事件标识
 // 参数 args: 传递给监听器的参数
 // 注意：此方法会阻塞直到所有监听器执行完成
+// 若通过 SetConcurrency 设置了并发度，则使用 worker pool 限制 goroutine 创建数量
 func (e *Emitter[E, T]) EmitWait(event E, args ...T) {
-	listeners := e.prepareEmit(event)
+	listeners, sem, recoverer := e.prepareEmit(event)
 	if len(listeners) == 0 {
 		return
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(listeners))
-
-	for _, wrapper := range listeners {
-		go func() {
-			defer wg.Done()
-			e.callListener(event, wrapper.listener, args...)
-		}()
+	if sem == nil {
+		// 无并发限制：直接为每个监听器创建 goroutine
+		var wg sync.WaitGroup
+		wg.Add(len(listeners))
+		for _, wrapper := range listeners {
+			go func() {
+				defer wg.Done()
+				e.callListener(event, wrapper.listener, recoverer, args...)
+			}()
+		}
+		wg.Wait()
+	} else {
+		// 有并发限制：使用 worker pool 模式
+		e.runWithWorkerPool(event, listeners, sem, recoverer, args...)
 	}
-
-	wg.Wait()
 }
 
 // EmitSync 同步触发事件的所有监听器
 // 参数 event: 事件标识
 // 参数 args: 传递给监听器的参数
-// 注意：此方法按顺序同步执行所有监听器
+// 注意：此方法按顺序同步执行所有监听器，不受 SetConcurrency 影响
 func (e *Emitter[E, T]) EmitSync(event E, args ...T) {
-	listeners := e.prepareEmit(event)
+	listeners, _, recoverer := e.prepareEmit(event)
 	if len(listeners) == 0 {
 		return
 	}
 
 	for _, wrapper := range listeners {
-		e.callListener(event, wrapper.listener, args...)
+		e.callListener(event, wrapper.listener, recoverer, args...)
 	}
 }
 
+// runWithWorkerPool 使用 worker pool 模式执行监听器
+// 只创建 min(cap(sem), len(listeners)) 个 worker goroutine，避免创建多余的空闲 goroutine
+func (e *Emitter[E, T]) runWithWorkerPool(event E, listeners []*listenerWrapper[T], sem chan struct{}, recoverer RecoveryListener[E, T], args ...T) {
+	workerCount := min(cap(sem), len(listeners))
+	tasks := make(chan *listenerWrapper[T], len(listeners))
+
+	// 填充任务队列
+	for _, wrapper := range listeners {
+		tasks <- wrapper
+	}
+	close(tasks)
+
+	// 启动固定数量的 worker goroutine
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for wrapper := range tasks {
+				e.callListener(event, wrapper.listener, recoverer, args...)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 // callListener 调用监听器并处理可能的 panic
-func (e *Emitter[E, T]) callListener(event E, listener Listener[T], args ...T) {
-	if e.recoverer != nil {
+// recoverer 必须是在持有锁期间快照的值，避免数据竞争
+func (e *Emitter[E, T]) callListener(event E, listener Listener[T], recoverer RecoveryListener[E, T], args ...T) {
+	if recoverer != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				// 传递原始 panic 值而不是转换为 error
-				e.recoverer(event, listener, r)
+				recoverer(event, listener, r)
 			}
 		}()
 	}
@@ -277,6 +321,21 @@ func (e *Emitter[E, T]) SetLogger(logger Logger) *Emitter[E, T] {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.logger = logger
+	return e
+}
+
+// SetConcurrency 设置并发执行监听器的最大数量
+// 参数 n: 最大并发数，n <= 0 表示无限制（默认）
+// 影响 Emit 和 EmitWait，不影响 EmitSync
+// 信号量在所有事件间共享，用于全局 goroutine 背压控制
+func (e *Emitter[E, T]) SetConcurrency(n int) *Emitter[E, T] {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if n <= 0 {
+		e.semaphore = nil
+	} else {
+		e.semaphore = make(chan struct{}, n)
+	}
 	return e
 }
 

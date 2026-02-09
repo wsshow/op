@@ -100,3 +100,43 @@ func BenchmarkMixedOperations(b *testing.B) {
 		cancel1()
 	}
 }
+
+// BenchmarkEmitWaitWithConcurrency 测试设置并发度的 EmitWait 性能
+func BenchmarkEmitWaitWithConcurrency(b *testing.B) {
+	for _, concurrency := range []int{0, 2, 4, 8} {
+		name := "Unlimited"
+		if concurrency > 0 {
+			name = fmt.Sprintf("Max-%d", concurrency)
+		}
+		b.Run(name, func(b *testing.B) {
+			em := NewEmitter[string, string]()
+			if concurrency > 0 {
+				em.SetConcurrency(concurrency)
+			}
+			for i := 0; i < 10; i++ {
+				em.AddListener("test", func(args ...string) {})
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				em.EmitWait("test", "data")
+			}
+		})
+	}
+}
+
+// BenchmarkHighFrequencyEmitWithConcurrency 测试高频 Emit + 并发限制
+func BenchmarkHighFrequencyEmitWithConcurrency(b *testing.B) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(4)
+	for i := 0; i < 10; i++ {
+		em.AddListener("test", func(args ...string) {})
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			em.Emit("test", "data")
+		}
+	})
+}

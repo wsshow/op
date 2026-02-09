@@ -430,3 +430,188 @@ func TestEmitWait(t *testing.T) {
 		t.Error("Listener should have been called")
 	}
 }
+
+// TestSetConcurrency 测试并发度限制
+func TestSetConcurrency(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(2) // 最多同时执行 2 个监听器
+
+	var mu sync.Mutex
+	maxConcurrent := 0
+	current := 0
+	totalCalls := 0
+
+	for i := 0; i < 10; i++ {
+		em.On("test", func(args ...string) {
+			mu.Lock()
+			current++
+			if current > maxConcurrent {
+				maxConcurrent = current
+			}
+			mu.Unlock()
+
+			time.Sleep(50 * time.Millisecond) // 模拟耗时操作
+
+			mu.Lock()
+			current--
+			totalCalls++
+			mu.Unlock()
+		})
+	}
+
+	em.EmitWait("test")
+
+	if totalCalls != 10 {
+		t.Errorf("Expected 10 calls, got %d", totalCalls)
+	}
+	if maxConcurrent > 2 {
+		t.Errorf("Max concurrent should be <= 2, got %d", maxConcurrent)
+	}
+}
+
+// TestSetConcurrencyEmit 测试异步 Emit 的并发度限制
+func TestSetConcurrencyEmit(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(3)
+
+	var mu sync.Mutex
+	maxConcurrent := 0
+	current := 0
+	done := make(chan struct{})
+	remaining := 6
+
+	for i := 0; i < 6; i++ {
+		em.On("test", func(args ...string) {
+			mu.Lock()
+			current++
+			if current > maxConcurrent {
+				maxConcurrent = current
+			}
+			mu.Unlock()
+
+			time.Sleep(50 * time.Millisecond)
+
+			mu.Lock()
+			current--
+			remaining--
+			allDone := remaining == 0
+			mu.Unlock()
+
+			if allDone {
+				close(done)
+			}
+		})
+	}
+
+	em.Emit("test")
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for listeners")
+	}
+
+	if maxConcurrent > 3 {
+		t.Errorf("Max concurrent should be <= 3, got %d", maxConcurrent)
+	}
+}
+
+// TestSetConcurrencyZeroMeansUnlimited 测试设置 0 表示无限制
+func TestSetConcurrencyZeroMeansUnlimited(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(2)
+	em.SetConcurrency(0) // 取消限制
+
+	var mu sync.Mutex
+	maxConcurrent := 0
+	current := 0
+
+	for i := 0; i < 5; i++ {
+		em.On("test", func(args ...string) {
+			mu.Lock()
+			current++
+			if current > maxConcurrent {
+				maxConcurrent = current
+			}
+			mu.Unlock()
+
+			time.Sleep(50 * time.Millisecond)
+
+			mu.Lock()
+			current--
+			mu.Unlock()
+		})
+	}
+
+	em.EmitWait("test")
+
+	// 无限制时，5 个监听器应当全部并发
+	if maxConcurrent < 3 {
+		t.Errorf("Without concurrency limit, expected higher concurrency, got %d", maxConcurrent)
+	}
+}
+
+// TestSetConcurrencyDoesNotAffectEmitSync 测试并发度不影响 EmitSync
+func TestSetConcurrencyDoesNotAffectEmitSync(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(1)
+
+	callOrder := make([]int, 0, 3)
+	var mu sync.Mutex
+
+	for i := range 3 {
+		idx := i
+		em.On("test", func(args ...string) {
+			mu.Lock()
+			callOrder = append(callOrder, idx)
+			mu.Unlock()
+		})
+	}
+
+	em.EmitSync("test")
+
+	if len(callOrder) != 3 {
+		t.Errorf("Expected 3 calls, got %d", len(callOrder))
+	}
+}
+
+// TestWorkerPoolActuallyLimitsGoroutines 测试 worker pool 真正限制了 goroutine 创建数量
+func TestWorkerPoolActuallyLimitsGoroutines(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(3) // 最多 3 个 worker goroutine
+
+	var mu sync.Mutex
+	activeGoroutines := 0
+	maxActive := 0
+	totalExecutions := 0
+
+	// 添加 20 个慢速监听器
+	for i := 0; i < 20; i++ {
+		em.On("test", func(args ...string) {
+			mu.Lock()
+			activeGoroutines++
+			if activeGoroutines > maxActive {
+				maxActive = activeGoroutines
+			}
+			totalExecutions++
+			mu.Unlock()
+
+			time.Sleep(20 * time.Millisecond) // 模拟耗时操作
+
+			mu.Lock()
+			activeGoroutines--
+			mu.Unlock()
+		})
+	}
+
+	em.EmitWait("test")
+
+	if totalExecutions != 20 {
+		t.Errorf("Expected 20 executions, got %d", totalExecutions)
+	}
+
+	// worker pool 模式下，活跃执行数应该 <= concurrency
+	if maxActive > 3 {
+		t.Errorf("With SetConcurrency(3) and worker pool, maxActive should be <= 3, got %d", maxActive)
+	}
+}
