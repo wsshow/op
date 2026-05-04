@@ -115,9 +115,9 @@ func (m *Manager) Remove(name string) {
 	}
 }
 
-// StartAll 启动所有当前未运行的进程。
-// ExecPath 为空等同步可检测的配置错误会立即返回；
-// 运行时错误通过各进程的 OnAfter 或 Wait 获取。
+// StartAll 启动所有当前未运行的进程（异步启动，不阻塞）。
+// 启动阶段的错误（如进程已在运行）会立即返回；
+// 运行时错误（如 ExecPath 无效）通过各进程的 OnAfter 或 Wait 获取。
 func (m *Manager) StartAll() error {
 	m.mu.RLock()
 	var idle []namedProc

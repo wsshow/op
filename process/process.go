@@ -20,22 +20,26 @@ const (
 	killWaitTimeout    = 2 * time.Second
 )
 
-// 进程状态枚举。
 const (
-	stateIdle    int32 = iota // 从未启动
-	stateRunning              // 运行中
-	stateStopped              // 已退出
+	stateIdle    int32 = iota
+	stateRunning
+	stateStopped
 )
 
 // Options 进程启动配置。
 type Options struct {
 	ExecPath    string               // 可执行文件路径
 	Args        []string             // 命令行参数
+	Context     context.Context      // 父上下文，nil 时使用 context.Background
 	OnBefore    func(*Process)       // 启动前回调
 	OnAfter     func(*Process)       // 退出后回调（无论成功与否）
 	OnStdout    func(string)         // 标准输出逐行回调
 	OnStderr    func(string)         // 标准错误逐行回调
 	SysProcAttr *syscall.SysProcAttr // 系统级进程属性
+
+	// MinRestartInterval 是两次启动之间的最小间隔，0 表示无限制。
+	// 用于防止 OnAfter 中调用 Restart 导致的紧密重启循环。
+	MinRestartInterval time.Duration
 }
 
 // Process 管理单个外部进程的完整生命周期。
@@ -50,6 +54,7 @@ type Process struct {
 	wg         sync.WaitGroup
 	state      atomic.Int32 // stateIdle / stateRunning / stateStopped
 	restarting atomic.Bool
+	lastStart  atomic.Int64 // 上次启动的 UnixNano 时间戳
 }
 
 // New 创建 Process 实例。
@@ -92,9 +97,14 @@ func (p *Process) launch(async bool) error {
 	}
 	p.err = nil
 	p.done = make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
+	parentCtx := p.opts.Context
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
 	p.cancel = cancel
 	p.state.Store(stateRunning)
+	p.lastStart.Store(time.Now().UnixNano())
 	p.mu.Unlock()
 
 	if async {
@@ -124,21 +134,23 @@ func (p *Process) exec(ctx context.Context) {
 	p.cmd.SysProcAttr = p.opts.SysProcAttr
 	p.mu.Unlock()
 
-	// 仅在有回调时创建管道
 	var stdout, stderr io.ReadCloser
-	var err error
 
 	if p.opts.OnStdout != nil {
-		if stdout, err = p.cmd.StdoutPipe(); err != nil {
+		out, err := p.cmd.StdoutPipe()
+		if err != nil {
 			p.addError(fmt.Errorf("stdout pipe: %w", err))
 			return
 		}
+		stdout = out
 	}
 	if p.opts.OnStderr != nil {
-		if stderr, err = p.cmd.StderrPipe(); err != nil {
+		out, err := p.cmd.StderrPipe()
+		if err != nil {
 			p.addError(fmt.Errorf("stderr pipe: %w", err))
 			return
 		}
+		stderr = out
 	}
 
 	if p.opts.OnBefore != nil {
@@ -177,6 +189,7 @@ func (p *Process) readLines(r io.Reader, handler func(string), source string) {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadString('\n')
+		// line 包含分隔符 '\n'，仅在干净 EOF（无数据）时为空字符串。
 		if line != "" {
 			handler(strings.TrimRight(line, "\r\n"))
 		}
@@ -189,18 +202,18 @@ func (p *Process) readLines(r io.Reader, handler func(string), source string) {
 	}
 }
 
-// Stop 发送取消信号。
+// Stop 发送取消信号，等待进程退出或默认超时后强制终止。
 func (p *Process) Stop() {
 	p.StopWithTimeout(defaultStopTimeout)
 }
 
 // StopWithTimeout 与 Stop 相同，但支持自定义宽限时间。
 func (p *Process) StopWithTimeout(timeout time.Duration) {
+	p.mu.Lock()
 	if p.state.Load() != stateRunning {
+		p.mu.Unlock()
 		return
 	}
-
-	p.mu.Lock()
 	cancel := p.cancel
 	done := p.done
 	p.mu.Unlock()
@@ -227,11 +240,24 @@ func (p *Process) StopWithTimeout(timeout time.Duration) {
 }
 
 // Restart 停止后重新启动。并发调用只有一个生效，其余立即返回。
+// MinRestartInterval 配置的间隔会在两次启动之间强制等待。
 func (p *Process) Restart() error {
 	if !p.restarting.CompareAndSwap(false, true) {
 		return nil
 	}
 	defer p.restarting.Store(false)
+
+	p.mu.Lock()
+	interval := p.opts.MinRestartInterval
+	p.mu.Unlock()
+
+	if interval > 0 {
+		lastStart := time.Unix(0, p.lastStart.Load())
+		if elapsed := time.Since(lastStart); elapsed < interval {
+			time.Sleep(interval - elapsed)
+		}
+	}
+
 	p.Stop()
 	return p.Start()
 }
@@ -315,6 +341,23 @@ func (p *Process) Signal(sig os.Signal) error {
 		return errors.New("process is not running")
 	}
 	return p.cmd.Process.Signal(sig)
+}
+
+// String 返回进程的调试信息。
+func (p *Process) String() string {
+	s := p.state.Load()
+	var stateStr string
+	switch s {
+	case stateIdle:
+		stateStr = "idle"
+	case stateRunning:
+		stateStr = "running"
+	case stateStopped:
+		stateStr = "stopped"
+	default:
+		stateStr = "unknown"
+	}
+	return fmt.Sprintf("Process{pid: %d, state: %s}", p.Pid(), stateStr)
 }
 
 func (p *Process) addError(err error) {
