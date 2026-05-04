@@ -46,14 +46,13 @@ func LinqFromAny[T any](arr []T) linq.Linq[T] {
 }
 
 // NewProcess 创建一个新的进程对象
-// 参数 co: 进程配置选项
-func NewProcess(co process.CmdOptions) *process.Process {
-	return process.NewProcess(co)
+func NewProcess(co process.Options) *process.Process {
+	return process.New(co)
 }
 
 // NewProcessManager 创建一个新的进程管理器对象
-func NewProcessManager() *process.ProcessManager {
-	return process.NewProcessManager()
+func NewProcessManager() *process.Manager {
+	return process.NewManager()
 }
 
 // NewWorkerPool 创建一个新的工作池对象

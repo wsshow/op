@@ -4,185 +4,221 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
-// ProcessManager 管理多个进程的实例，提供进程的增删改查功能。
-type ProcessManager struct {
-	processMap map[string]*Process // 存储进程的映射表，键为进程名称
-	mu         sync.RWMutex        // 读写锁，确保线程安全
+// Manager 管理一组具名进程，所有方法均并发安全。
+type Manager struct {
+	mu    sync.RWMutex
+	procs map[string]*Process
 }
 
-// NewProcessManager 创建一个新的 ProcessManager 实例。
-func NewProcessManager() *ProcessManager {
-	return &ProcessManager{
-		processMap: make(map[string]*Process),
-	}
+// NewManager 创建 Manager 实例。
+func NewManager() *Manager {
+	return &Manager{procs: make(map[string]*Process)}
 }
 
-// GetProcess 获取指定名称的进程。
-// 返回进程实例和是否存在的标志。
-func (pm *ProcessManager) GetProcess(name string) (*Process, bool) {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	p, exists := pm.processMap[name]
-	return p, exists
-}
-
-// GetProcesses 获取所有进程的列表。
-func (pm *ProcessManager) GetProcesses() []*Process {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	processes := make([]*Process, 0, len(pm.processMap))
-	for _, p := range pm.processMap {
-		processes = append(processes, p)
+// Add 注册并异步启动一个新进程。name 为空或已存在时返回错误。
+func (m *Manager) Add(name string, opts Options) error {
+	if name == "" {
+		return errors.New("name cannot be empty")
 	}
-	return processes
-}
-
-// AddProcess 添加并启动一个新进程。
-// 如果进程名称已存在，返回错误。
-// 注意：进程异步启动，启动错误需通过 Process.Error() 或 Process.Wait() 检查。
-func (pm *ProcessManager) AddProcess(co CmdOptions) error {
-	if co.Name == "" {
-		return errors.New("process name cannot be empty")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.procs[name]; exists {
+		return fmt.Errorf("process %q already exists", name)
 	}
-
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if _, exists := pm.processMap[co.Name]; exists {
-		return fmt.Errorf("process %q already exists", co.Name)
+	p := New(opts)
+	if err := p.Start(); err != nil {
+		return fmt.Errorf("start %q: %w", name, err)
 	}
-
-	process := NewProcess(co).AsyncRun()
-	pm.processMap[co.Name] = process
+	m.procs[name] = p
 	return nil
 }
 
-// UpdateProcess 更新现有进程。
-// 如果进程不存在，返回错误。停止旧进程并用新进程替换。
-func (pm *ProcessManager) UpdateProcess(process *Process) error {
-	if process == nil || process.CmdOptions().Name == "" {
-		return errors.New("invalid process or empty name")
+// Get 返回指定名称的进程，不存在时第二个返回值为 false。
+func (m *Manager) Get(name string) (*Process, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p, ok := m.procs[name]
+	return p, ok
+}
+
+// Has 报告指定名称的进程是否已注册。
+func (m *Manager) Has(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.procs[name]
+	return ok
+}
+
+// List 返回所有已注册进程的快照，顺序不定。
+func (m *Manager) List() []*Process {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	list := make([]*Process, 0, len(m.procs))
+	for _, p := range m.procs {
+		list = append(list, p)
 	}
+	return list
+}
 
-	name := process.CmdOptions().Name
+// Range 对已注册进程的快照逐一调用 fn，fn 返回 false 时停止。
+func (m *Manager) Range(fn func(name string, p *Process) bool) {
+	m.mu.RLock()
+	snapshot := make([]namedProc, 0, len(m.procs))
+	for name, p := range m.procs {
+		snapshot = append(snapshot, namedProc{name, p})
+	}
+	m.mu.RUnlock()
 
-	pm.mu.Lock()
-	oldProcess, exists := pm.processMap[name]
-	if !exists {
-		pm.mu.Unlock()
+	for _, e := range snapshot {
+		if !fn(e.name, e.p) {
+			return
+		}
+	}
+}
+
+// SetOptions 替换已注册进程的配置，不重启。进程运行中时返回错误。
+func (m *Manager) SetOptions(name string, opts Options) error {
+	m.mu.RLock()
+	p, ok := m.procs[name]
+	m.mu.RUnlock()
+	if !ok {
 		return fmt.Errorf("process %q not found", name)
 	}
-	pm.processMap[name] = process
-	pm.mu.Unlock()
-
-	// 释放锁后停止旧进程，避免长时间持锁阻塞
-	if oldProcess.IsRunning() {
-		oldProcess.Stop()
-	}
-	return nil
+	return p.SetOptions(opts)
 }
 
-// RemoveProcess 移除指定名称的进程。
-// 如果进程存在且正在运行，先停止再删除。
-func (pm *ProcessManager) RemoveProcess(name string) error {
-	pm.mu.Lock()
-	process, exists := pm.processMap[name]
+// Restart 重启指定进程，沿用当前配置。
+func (m *Manager) Restart(name string) error {
+	m.mu.RLock()
+	p, ok := m.procs[name]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("process %q not found", name)
+	}
+	return p.Restart()
+}
+
+// Remove 注销并停止指定进程。名称不存在时静默返回。
+func (m *Manager) Remove(name string) {
+	m.mu.Lock()
+	p, exists := m.procs[name]
 	if exists {
-		delete(pm.processMap, name)
+		delete(m.procs, name)
 	}
-	pm.mu.Unlock()
+	m.mu.Unlock()
 
-	if !exists {
-		return nil
+	if exists {
+		p.Stop()
 	}
-
-	// 释放锁后停止进程，避免长时间持锁阻塞
-	if process.IsRunning() {
-		process.Stop()
-		if err := process.Error(); err != nil {
-			return fmt.Errorf("failed to stop process %q: %w", name, err)
-		}
-	}
-	return nil
 }
 
-// StartAll 启动所有已添加但未运行的进程。
-// 返回启动过程中遇到的所有错误（合并）。
-func (pm *ProcessManager) StartAll() error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+// StartAll 启动所有当前未运行的进程。
+// ExecPath 为空等同步可检测的配置错误会立即返回；
+// 运行时错误通过各进程的 OnAfter 或 Wait 获取。
+func (m *Manager) StartAll() error {
+	m.mu.RLock()
+	var idle []namedProc
+	for name, p := range m.procs {
+		if !p.IsRunning() {
+			idle = append(idle, namedProc{name, p})
+		}
+	}
+	m.mu.RUnlock()
 
 	var errs []error
-	for name, process := range pm.processMap {
-		if !process.IsRunning() {
-			newProcess := NewProcess(process.CmdOptions()).AsyncRun()
-			// 检查立即发生的初始化错误（如 ExecPath 为空）
-			if err := newProcess.Error(); err != nil {
-				errs = append(errs, fmt.Errorf("failed to start process %q: %w", name, err))
-				continue
-			}
-			pm.processMap[name] = newProcess
+	for _, e := range idle {
+		if err := e.p.Start(); err != nil {
+			errs = append(errs, fmt.Errorf("start %q: %w", e.name, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// StopAll 停止所有正在运行的进程。
-// 返回停止过程中遇到的所有错误（合并）。
-func (pm *ProcessManager) StopAll() error {
-	pm.mu.RLock()
-	toStop := make([]*Process, 0, len(pm.processMap))
-	names := make([]string, 0, len(pm.processMap))
-	for name, process := range pm.processMap {
-		if process.IsRunning() {
-			toStop = append(toStop, process)
-			names = append(names, name)
-		}
-	}
-	pm.mu.RUnlock()
-
-	// 释放锁后停止进程，避免长时间持锁阻塞
-	var errs []error
-	for i, process := range toStop {
-		process.Stop()
-		if err := process.Error(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop process %q: %w", names[i], err))
-		}
-	}
-	return errors.Join(errs...)
+// StopAll 并发停止所有运行中的进程。
+func (m *Manager) StopAll() {
+	m.StopAllWithTimeout(defaultStopTimeout)
 }
 
-// Count 返回当前管理的进程数量。
-func (pm *ProcessManager) Count() int {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	return len(pm.processMap)
+// StopAllWithTimeout 并发停止所有运行中的进程，使用自定义宽限时间。
+func (m *Manager) StopAllWithTimeout(timeout time.Duration) {
+	targets := m.runningSnapshot()
+	stopConcurrently(targets, timeout)
 }
 
-// Clear 移除所有进程并停止运行中的进程。
-// 返回停止过程中遇到的所有错误（合并）。
-func (pm *ProcessManager) Clear() error {
-	pm.mu.Lock()
-	toStop := make([]*Process, 0, len(pm.processMap))
-	names := make([]string, 0, len(pm.processMap))
-	for name, process := range pm.processMap {
-		if process.IsRunning() {
-			toStop = append(toStop, process)
-			names = append(names, name)
-		}
-		delete(pm.processMap, name)
-	}
-	pm.mu.Unlock()
+// RestartAll 并发停止所有进程后重新启动。返回启动阶段的错误。
+func (m *Manager) RestartAll() error {
+	targets := m.runningSnapshot()
+	stopConcurrently(targets, defaultStopTimeout)
+	return m.StartAll()
+}
 
-	// 释放锁后停止进程，避免长时间持锁阻塞
-	var errs []error
-	for i, process := range toStop {
-		process.Stop()
-		if err := process.Error(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop process %q: %w", names[i], err))
+// Clear 并发停止并注销所有进程。
+func (m *Manager) Clear() {
+	m.mu.Lock()
+	snapshot := make([]namedProc, 0, len(m.procs))
+	for name, p := range m.procs {
+		snapshot = append(snapshot, namedProc{name, p})
+	}
+	m.procs = make(map[string]*Process)
+	m.mu.Unlock()
+
+	stopConcurrently(snapshot, defaultStopTimeout)
+}
+
+// Count 返回已注册的进程总数。
+func (m *Manager) Count() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.procs)
+}
+
+// RunningCount 返回当前正在运行的进程数。
+func (m *Manager) RunningCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, p := range m.procs {
+		if p.IsRunning() {
+			n++
 		}
 	}
-	return errors.Join(errs...)
+	return n
+}
+
+type namedProc struct {
+	name string
+	p    *Process
+}
+
+// runningSnapshot 返回当前运行中进程的快照。
+func (m *Manager) runningSnapshot() []namedProc {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var list []namedProc
+	for name, p := range m.procs {
+		if p.IsRunning() {
+			list = append(list, namedProc{name, p})
+		}
+	}
+	return list
+}
+
+// stopConcurrently 并发停止一组进程，等待全部退出。
+func stopConcurrently(targets []namedProc, timeout time.Duration) {
+	if len(targets) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, t := range targets {
+		t := t
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t.p.StopWithTimeout(timeout)
+		}()
+	}
+	wg.Wait()
 }
