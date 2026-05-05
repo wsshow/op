@@ -159,13 +159,32 @@ func (d *Deque[T]) Rotate(steps int) {
 		steps += d.size
 	}
 
-	// 将全部元素复制到临时切片，旋转后写回，避免逐元素 Pop/Push 的零值写入与缩容检查开销。
-	temp := make([]T, d.size)
-	for i := 0; i < d.size; i++ {
-		temp[i] = d.buffer[d.realIndex(i)]
-	}
-	for i := 0; i < d.size; i++ {
-		d.buffer[d.realIndex(i)] = temp[(i+steps)%d.size]
+	// 选择移动元素较少的方向，将旋转分解为三步：保存、批量搬移、回写。
+	if steps <= d.size/2 {
+		// 正向旋转：搬移前 steps 个元素到尾部
+		temp := make([]T, steps)
+		for i := 0; i < steps; i++ {
+			temp[i] = d.buffer[d.realIndex(i)]
+		}
+		for i := 0; i < d.size-steps; i++ {
+			d.buffer[d.realIndex(i)] = d.buffer[d.realIndex(i+steps)]
+		}
+		for i := 0; i < steps; i++ {
+			d.buffer[d.realIndex(d.size-steps+i)] = temp[i]
+		}
+	} else {
+		// 反向旋转：搬移后 (size-steps) 个元素到头部
+		n := d.size - steps
+		temp := make([]T, n)
+		for i := 0; i < n; i++ {
+			temp[i] = d.buffer[d.realIndex(steps+i)]
+		}
+		for i := steps - 1; i >= 0; i-- {
+			d.buffer[d.realIndex(i+n)] = d.buffer[d.realIndex(i)]
+		}
+		for i := 0; i < n; i++ {
+			d.buffer[d.realIndex(i)] = temp[i]
+		}
 	}
 }
 
