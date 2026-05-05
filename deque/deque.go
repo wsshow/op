@@ -7,6 +7,15 @@ import "fmt"
 // minCapacity 是双端队列的最小容量，必须是 2 的幂以支持位运算取模。
 const minCapacity = 16
 
+// ceilPowerOfTwo 返回不小于 n 的最小 2 的幂，且不低于 minCapacity。
+func ceilPowerOfTwo(n int) int {
+	c := minCapacity
+	for c < n {
+		c <<= 1
+	}
+	return c
+}
+
 // Deque 是一个基于环形缓冲区的双端队列，支持泛型类型 T。
 // 零值可直接使用，无需显式初始化。
 type Deque[T any] struct {
@@ -110,12 +119,15 @@ func (d *Deque[T]) Set(index int, item T) {
 	d.buffer[d.realIndex(index)] = item
 }
 
-// Clear 清空队列中的所有元素，但保留当前缓冲区容量。
+// Clear 清空队列中的所有元素，仅清零逻辑区间以辅助 GC。
 func (d *Deque[T]) Clear() {
 	if d.size == 0 {
 		return
 	}
-	clear(d.buffer)
+	var zero T
+	for i := 0; i < d.size; i++ {
+		d.buffer[d.realIndex(i)] = zero
+	}
 	d.headIdx = 0
 	d.tailIdx = 0
 	d.size = 0
@@ -136,22 +148,24 @@ func (d *Deque[T]) Grow(n int) {
 // Rotate 将队列元素旋转 steps 步。正数向前旋转，负数向后旋转。
 // 元素少于 2 个时无操作。
 func (d *Deque[T]) Rotate(steps int) {
-	if d == nil || d.size <= 1 {
+	if d.size <= 1 {
 		return
 	}
 	steps %= d.size
 	if steps == 0 {
 		return
 	}
+	if steps < 0 {
+		steps += d.size
+	}
 
-	if steps > 0 {
-		for i := 0; i < steps; i++ {
-			d.PushBack(d.PopFront())
-		}
-	} else {
-		for i := 0; i < -steps; i++ {
-			d.PushFront(d.PopBack())
-		}
+	// 将全部元素复制到临时切片，旋转后写回，避免逐元素 Pop/Push 的零值写入与缩容检查开销。
+	temp := make([]T, d.size)
+	for i := 0; i < d.size; i++ {
+		temp[i] = d.buffer[d.realIndex(i)]
+	}
+	for i := 0; i < d.size; i++ {
+		d.buffer[d.realIndex(i)] = temp[(i+steps)%d.size]
 	}
 }
 
@@ -171,13 +185,17 @@ func (d *Deque[T]) RIndex(match func(T) bool) int {
 	return d.search(match, false)
 }
 
-// Insert 在指定位置插入元素。若索引 <= 0 则添加到头部，>= Size 则添加到尾部。
+// Insert 在指定位置插入元素。at 的有效范围为 [0, Size()]；0 等价于 PushFront，
+// Size() 等价于 PushBack。若 at 越界则 panic。
 func (d *Deque[T]) Insert(at int, item T) {
-	if at <= 0 {
+	if at < 0 || at > d.size {
+		panic(fmt.Sprintf("deque: insert index out of range %d with length %d", at, d.size))
+	}
+	if at == 0 {
 		d.PushFront(item)
 		return
 	}
-	if at >= d.size {
+	if at == d.size {
 		d.PushBack(item)
 		return
 	}
@@ -199,10 +217,7 @@ func (d *Deque[T]) Remove(at int) T {
 // SetBaseCap 设置基础容量（向上取整到 2 的幂）。
 // 缩容时不会缩小到基础容量以下。
 func (d *Deque[T]) SetBaseCap(baseCap int) {
-	newCap := minCapacity
-	for newCap < baseCap {
-		newCap <<= 1
-	}
+	newCap := ceilPowerOfTwo(baseCap)
 	d.baseCap = newCap
 	// 只有在已经分配了 buffer 且容量不足时才调整大小
 	if d.buffer != nil && d.Capacity() < newCap {
@@ -245,29 +260,29 @@ func (d *Deque[T]) nextIndex(i int) int {
 // ensureCapacity 确保缓冲区有空间容纳新元素，必要时进行扩容。
 func (d *Deque[T]) ensureCapacity() {
 	if d.buffer == nil {
-		if d.baseCap == 0 {
-			d.baseCap = minCapacity
-		}
-		d.buffer = make([]T, d.baseCap)
+		d.buffer = make([]T, ceilPowerOfTwo(d.baseCap))
 	} else if d.size == len(d.buffer) {
-		d.resize(d.size << 1)
+		d.resize(max(d.size<<1, minCapacity))
 	}
 }
 
 // shrinkIfNeeded 在队列占用低于缓冲区容量的 1/4 时缩减容量。
-// 缩容后的容量不会低于 baseCap。
+// 缩容后的容量不低于 max(baseCap, minCapacity)。
 func (d *Deque[T]) shrinkIfNeeded() {
 	if len(d.buffer) > d.baseCap && (d.size<<2) <= len(d.buffer) {
-		newCap := d.size << 1
-		if newCap < d.baseCap {
-			newCap = d.baseCap
+		newCap := max(d.size<<1, d.baseCap)
+		if newCap < minCapacity {
+			newCap = minCapacity
 		}
 		d.resize(newCap)
 	}
 }
 
-// resize 重新分配缓冲区并复制现有元素。
+// resize 重新分配缓冲区并复制现有元素。newSize 至少为 minCapacity。
 func (d *Deque[T]) resize(newSize int) {
+	if newSize < minCapacity {
+		newSize = minCapacity
+	}
 	newBuffer := make([]T, newSize)
 	if d.size > 0 {
 		if d.tailIdx > d.headIdx {
@@ -284,11 +299,7 @@ func (d *Deque[T]) resize(newSize int) {
 
 // calculateNewCapacity 计算容纳 n 个额外元素所需的最小 2 的幂容量。
 func (d *Deque[T]) calculateNewCapacity(n int) int {
-	newCap := max(d.Capacity(), minCapacity)
-	for newCap < d.size+n {
-		newCap <<= 1
-	}
-	return newCap
+	return ceilPowerOfTwo(max(d.Capacity(), d.size+n))
 }
 
 // search 在缓冲区中执行线性搜索。forward 为 true 时从头部搜索，否则从尾部搜索。

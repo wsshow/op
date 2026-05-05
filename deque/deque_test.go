@@ -27,8 +27,8 @@ func TestNil(t *testing.T) {
 	if q.Capacity() != 0 {
 		t.Errorf("expected q.Capacity() == 0, got %d", q.Capacity())
 	}
-	q.Rotate(5) // nil队列旋转应无操作
 	assertIndex(t, q, func(item int) bool { return true }, -1, "nil deque should return -1")
+	assertPanics(t, "should panic when rotating nil deque", func() { q.Rotate(5) })
 }
 
 // TestFrontBack 测试队列前后端操作
@@ -370,12 +370,16 @@ func TestSetOutOfRangePanics(t *testing.T) {
 // TestInsertOutOfRangePanics 测试越界插入
 func TestInsertOutOfRangePanics(t *testing.T) {
 	q := new(Deque[string])
-	q.Insert(1, "A")
+	// Insert 在 [0, Size()] 范围内有效
+	q.Insert(0, "A") // Size=0，等价于 PushBack（也是 PushFront）
 	assertEqual(t, q.Front(), "A", "expected A at front")
-	q.Insert(-1, "B")
-	assertEqual(t, q.Front(), "B", "expected B at front")
-	q.Insert(999, "C")
-	assertEqual(t, q.Back(), "C", "expected C at back")
+	q.Insert(q.Size(), "B") // 等价于 PushBack
+	assertEqual(t, q.Back(), "B", "expected B at back")
+	q.Insert(0, "C") // 等价于 PushFront
+	assertEqual(t, q.Front(), "C", "expected C at front")
+	// 越界的 Insert 应 panic
+	assertPanics(t, "should panic with negative index", func() { q.Insert(-1, "D") })
+	assertPanics(t, "should panic with out-of-range index", func() { q.Insert(999, "E") })
 }
 
 // TestRemoveOutOfRangePanics 测试越界移除的panic
@@ -567,7 +571,7 @@ func assertIndexReverse[T any](t *testing.T, q *Deque[T], match func(T) bool, wa
 	}
 }
 
-// assertBufferCleared 检查缓冲区是否被清空
+// assertBufferCleared 检查队列的逻辑区间是否被清空。
 func assertBufferCleared[T comparable](t *testing.T, q *Deque[T]) {
 	var zero T
 	for i := 0; i < len(q.buffer); i++ {
