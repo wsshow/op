@@ -144,10 +144,10 @@ evenCount := data.CountBy(func(x int) bool { return x%2 == 0 }) // 2
 sum := linq.Sum(data)                                      // 15
 avg := linq.Average(linq.From([]float64{1, 2, 3})) // 2.0
 
-// 最小值 / 最大值——需 WithComparer，返回 (值, error)
+// 最小值 / 最大值——需 WithComparer，返回 (值, bool)
 nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(func(a, b int) int { return a - b })
-min, err := nums.Min() // 1, nil
-max, err := nums.Max() // 8, nil
+min, ok := nums.Min() // 1, true
+max, ok := nums.Max() // 8, true
 
 // MinBy / MaxBy——无需比较器，按 key 取最值，返回 (元素, 是否找到)
 type Product struct{ Name string; Price float64 }
@@ -283,10 +283,10 @@ if err := l.Error(); err != nil {
     fmt.Println("错误:", err) // "linq.Distinct: requires a comparer, use WithComparer"
 }
 
-// Min/Max 直接返回错误
-_, err := linq.From([]int{1, 2}).Min()
-if err != nil {
-    fmt.Println("缺少比较器:", err)
+// Min/Max 返回 (T, bool)，false 表示空序列或缺少比较器
+_, ok := linq.From([]int{1, 2}).Min()
+if !ok {
+    fmt.Println("缺少比较器或序列为空")
 }
 
 // 错误沿链传播——在链末检查即可
@@ -343,10 +343,12 @@ if err := linq.From(data).WithComparer(...).Distinct().Error(); err != nil {
 | `CountBy(predicate) int` | 满足条件的数量 |
 | `Sum[T Numeric](l) T` | 数值求和 |
 | `Average[T Numeric](l) float64` | 数值平均值 |
-| `Min() (T, error)` | 最小值（需 WithComparer） |
-| `Max() (T, error)` | 最大值（需 WithComparer） |
+| `Min() (T, bool)` | 最小值（需 WithComparer） |
+| `Max() (T, bool)` | 最大值（需 WithComparer） |
 | `MinBy[T, K ordered](l, keyFn) (T, bool)` | 按 key 取最小元素 |
 | `MaxBy[T, K ordered](l, keyFn) (T, bool)` | 按 key 取最大元素 |
+| `MinVal[T ordered](l) (T, bool)` | ordered 类型最小值 |
+| `MaxVal[T ordered](l) (T, bool)` | ordered 类型最大值 |
 | `Aggregate[T, R any](l, seed, fn) R` | 累积运算（折叠） |
 
 ### 元素访问
@@ -402,10 +404,10 @@ if err := linq.From(data).WithComparer(...).Distinct().Error(); err != nil {
 
 ## 注意事项
 
-- **错误处理**：方法返回携带错误的 `Linq` 实例；终端函数 `Min`/`Max` 返回 `(T, error)`。建议在链末检查错误。
+- **错误处理**：方法返回携带错误的 `Linq` 实例；终端函数返回 `(T, bool)`。建议在链末检查错误。
 - **需要比较器**：`Distinct()`、`Min()`、`Max()` 需通过 `WithComparer()` 设置比较器。内置类型推荐使用 `DistinctComparable()` 或 `MinBy`/`MaxBy`。
 - **不可变性**：操作返回新实例，不修改原始数据。
-- **v1 破坏性变更**：`Min()` 和 `Max()` 的返回值从 `(T, bool)` 改为 `(T, error)`。
+- **v1 起 Min() 和 Max() 返回 (T, bool)，与 MinBy/MaxBy/MinVal/MaxVal 保持一致。
 
 ## 许可证
 

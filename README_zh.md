@@ -107,13 +107,12 @@ import (
 	"fmt"
 
 	"github.com/wsshow/op"
-	"github.com/wsshow/op/generator"
 )
 
 func main() {
 	// 创建字符串包装器
 	s := op.NewString("Hello, World")
-	fmt.Println(s.Contain("World")) // true
+	fmt.Println(s.Contains("World")) // true
 
 	// 创建泛型切片
 	sl := op.NewSlice(1, 2, 3)
@@ -137,7 +136,7 @@ func main() {
 	fmt.Println(d.PopFront()) // 0
 
 	// 创建生成器
-	g := op.NewGenerator(func(yield generator.Yield[int]) {
+	g := op.NewGenerator(func(yield op.Yield[int]) {
 		for i := 0; i < 3; i++ {
 			yield.Send(i)
 		}

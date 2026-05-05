@@ -107,13 +107,12 @@ import (
 	"fmt"
 
 	"github.com/wsshow/op"
-	"github.com/wsshow/op/generator"
 )
 
 func main() {
 	// Create a string wrapper
 	s := op.NewString("Hello, World")
-	fmt.Println(s.Contain("World")) // true
+	fmt.Println(s.Contains("World")) // true
 
 	// Create a generic slice
 	sl := op.NewSlice(1, 2, 3)
@@ -137,7 +136,7 @@ func main() {
 	fmt.Println(d.PopFront()) // 0
 
 	// Create a generator
-	g := op.NewGenerator(func(yield generator.Yield[int]) {
+	g := op.NewGenerator(func(yield op.Yield[int]) {
 		for i := 0; i < 3; i++ {
 			yield.Send(i)
 		}

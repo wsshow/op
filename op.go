@@ -58,17 +58,17 @@ type Options = process.Options
 // ---------------------------------------------------------------------------
 
 // NewString 创建一个新的字符串对象。
-func NewString(s string) *str.String { return str.New(s) }
+func NewString(s string) *String { return str.New(s) }
 
 // JoinStrings 使用分隔符连接字符串切片，返回新 String 对象。
-func JoinStrings(elems []string, sep string) *str.String { return str.Join(elems, sep) }
+func JoinStrings(elems []string, sep string) *String { return str.Join(elems, sep) }
 
 // NewSlice 创建一个新的泛型切片对象，可传入初始值。
-func NewSlice[T any](values ...T) *slice.Slice[T] { return slice.New(values...) }
+func NewSlice[T any](values ...T) *Slice[T] { return slice.New(values...) }
 
 // NewDeque 创建一个新的泛型双端队列对象。
 // 可选 capacity 参数设置初始基础容量。
-func NewDeque[T any](capacity ...int) *deque.Deque[T] { return deque.New[T](capacity...) }
+func NewDeque[T any](capacity ...int) *Deque[T] { return deque.New[T](capacity...) }
 
 // ---------------------------------------------------------------------------
 // 事件
@@ -76,7 +76,7 @@ func NewDeque[T any](capacity ...int) *deque.Deque[T] { return deque.New[T](capa
 
 // NewEmitter 创建一个新的事件发射器对象。
 // E 为事件标识类型，T 为监听器参数类型。
-func NewEmitter[E comparable, T any]() *emission.Emitter[E, T] {
+func NewEmitter[E comparable, T any]() *Emitter[E, T] {
 	return emission.NewEmitter[E, T]()
 }
 
@@ -85,29 +85,29 @@ func NewEmitter[E comparable, T any]() *emission.Emitter[E, T] {
 // ---------------------------------------------------------------------------
 
 // LinqFrom 从切片创建一个 Linq 对象，用于链式查询。
-func LinqFrom[T any](arr []T) linq.Linq[T] { return linq.From(arr) }
+func LinqFrom[T any](arr []T) Linq[T] { return linq.From(arr) }
 
 // LinqEmpty 创建一个空的 Linq 对象。
-func LinqEmpty[T any]() linq.Linq[T] { return linq.Empty[T]() }
+func LinqEmpty[T any]() Linq[T] { return linq.Empty[T]() }
 
 // LinqRange 生成从 start 开始的 count 个连续整数。
-func LinqRange(start, count int) linq.Linq[int] { return linq.Range(start, count) }
+func LinqRange(start, count int) Linq[int] { return linq.Range(start, count) }
 
 // LinqRepeat 生成 count 个重复的 value。
-func LinqRepeat[T any](value T, count int) linq.Linq[T] { return linq.Repeat(value, count) }
+func LinqRepeat[T any](value T, count int) Linq[T] { return linq.Repeat(value, count) }
 
 // ---------------------------------------------------------------------------
 // 并发
 // ---------------------------------------------------------------------------
 
 // NewGenerator 创建并启动一个新的生成器，在后台 goroutine 中运行 genFunc。
-func NewGenerator[T any](genFunc func(Yield[T])) *generator.Generator[T] {
+func NewGenerator[T any](genFunc func(Yield[T])) *Generator[T] {
 	return generator.NewGenerator(genFunc)
 }
 
 // NewWorkerPool 创建一个新的工作协程池。
 // maxWorkers 指定最大并发工作协程数，opts 可选配置空闲超时等参数。
-func NewWorkerPool(maxWorkers int, opts ...workerpool.Option) *workerpool.WorkerPool {
+func NewWorkerPool(maxWorkers int, opts ...Option) *WorkerPool {
 	return workerpool.New(maxWorkers, opts...)
 }
 
@@ -116,7 +116,7 @@ func NewWorkerPool(maxWorkers int, opts ...workerpool.Option) *workerpool.Worker
 // ---------------------------------------------------------------------------
 
 // NewProcess 创建一个新的进程对象。
-func NewProcess(co process.Options) *process.Process { return process.New(co) }
+func NewProcess(co Options) *Process { return process.New(co) }
 
 // NewProcessManager 创建一个新的进程管理器对象。
-func NewProcessManager() *process.Manager { return process.NewManager() }
+func NewProcessManager() *Manager { return process.NewManager() }

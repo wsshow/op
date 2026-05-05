@@ -148,10 +148,10 @@ avg := linq.Average(linq.From([]float64{1, 2, 3})) // 2.0
 	minVal, ok := linq.MinVal(data) // 1, true
 	maxVal, ok := linq.MaxVal(data) // 5, true
 
-// Min / Max — requires WithComparer, returns (value, error)
+// Min / Max — requires WithComparer, returns (value, bool)
 nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(func(a, b int) int { return a - b })
-min, err := nums.Min() // 1, nil
-max, err := nums.Max() // 8, nil
+min, ok := nums.Min() // 1, true
+max, ok := nums.Max() // 8, true
 
 // MinBy / MaxBy — no comparer needed, returns (value, bool)
 type Product struct{ Name string; Price float64 }
@@ -287,10 +287,10 @@ if err := l.Error(); err != nil {
     fmt.Println("Error:", err) // "linq.Distinct: requires a comparer, use WithComparer"
 }
 
-// Min/Max return errors directly
-_, err := linq.From([]int{1, 2}).Min()
-if err != nil {
-    fmt.Println("Missing comparer:", err)
+// Min/Max return (T, bool), false means empty or missing comparer
+_, ok := linq.From([]int{1, 2}).Min()
+if !ok {
+    fmt.Println("Missing comparer or empty")
 }
 
 // Errors propagate through the chain — check at the end
@@ -347,10 +347,12 @@ if err := linq.From(data).WithComparer(...).Distinct().Error(); err != nil {
 | `CountBy(predicate) int` | Count matches |
 | `Sum[T Numeric](l) T` | Sum of numeric values |
 | `Average[T Numeric](l) float64` | Average of numeric values |
-| `Min() (T, error)` | Minimum (needs WithComparer) |
-| `Max() (T, error)` | Maximum (needs WithComparer) |
+| `Min() (T, bool)` | Minimum (needs WithComparer) |
+| `Max() (T, bool)` | Maximum (needs WithComparer) |
 | `MinBy[T, K ordered](l, keyFn) (T, bool)` | Element with min key |
 | `MaxBy[T, K ordered](l, keyFn) (T, bool)` | Element with max key |
+| `MinVal[T ordered](l) (T, bool)` | Min for ordered types |
+| `MaxVal[T ordered](l) (T, bool)` | Max for ordered types |
 | `Aggregate[T, R any](l, seed, fn) R` | Fold / reduce |
 
 ### Element Access
@@ -406,10 +408,10 @@ if err := linq.From(data).WithComparer(...).Distinct().Error(); err != nil {
 
 ## Notes
 
-- **Error handling**: Methods return new `Linq` instances with errors set; terminal functions like `Min`/`Max` return `(T, error)`. Always check errors at the end of a chain.
+- **Error handling**: Methods return new `Linq` instances with errors set; terminal functions return `(T, bool)`. Always check errors at the end of a chain.
 - **Comparer required**: `Distinct()`, `Min()`, and `Max()` need a comparer via `WithComparer()`. For built-in types, use `DistinctComparable()` or `MinBy`/`MaxBy` instead.
 - **Immutability**: Operations return new instances and do not modify original data.
-- **Breaking change from v1**: `Min()` and `Max()` return `(T, error)` instead of `(T, bool)`.
+- **Min() and Max() return (T, bool), consistent with MinBy/MaxBy/MinVal/MaxVal.
 
 ## License
 
