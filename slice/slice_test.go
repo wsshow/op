@@ -1,6 +1,7 @@
 package slice
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -207,6 +208,17 @@ func TestIsEmpty(t *testing.T) {
 	s.Push(1)
 	if s.IsEmpty() {
 		t.Error("Slice with elements should not be empty")
+	}
+}
+
+func TestCap(t *testing.T) {
+	s := New[int]()
+	if s.Cap() < 0 {
+		t.Errorf("Cap should be >= 0, got %d", s.Cap())
+	}
+	s2 := New(1, 2, 3)
+	if s2.Cap() < 3 {
+		t.Errorf("Cap should be >= 3, got %d", s2.Cap())
 	}
 }
 
@@ -714,4 +726,40 @@ func TestSortStable(t *testing.T) {
 	if len(vals) != 2 || vals[0] != 200 || vals[1] != 201 {
 		t.Errorf("SortStable: expected [200, 201] (stable), got %v", vals)
 	}
+}
+
+func ExampleNew() {
+	s := New(1, 2, 3)
+	s.ForEach(func(v int) {
+		// process v
+	})
+	// Output:
+}
+
+func ExampleSlice_Push() {
+	s := New[int]()
+	s.Push(1, 2, 3)
+	fmt.Println(s.Length())
+	// Output: 3
+}
+
+func ExampleSlice_Filter() {
+	s := New(1, 2, 3, 4, 5)
+	filtered := s.Filter(func(v int) bool { return v%2 == 0 })
+	fmt.Println(filtered.Raw())
+	// Output: [2 4]
+}
+
+func ExampleSlice_Map() {
+	s := New(1, 2, 3)
+	mapped := s.Map(func(v int) int { return v * 2 })
+	fmt.Println(mapped.Raw())
+	// Output: [2 4 6]
+}
+
+func ExampleSlice_Reduce() {
+	s := New(1, 2, 3, 4, 5)
+	sum := s.Reduce(func(acc, cur int) int { return acc + cur }, 0)
+	fmt.Println(sum)
+	// Output: 15
 }

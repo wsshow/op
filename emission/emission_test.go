@@ -1,6 +1,7 @@
 package emission
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -575,6 +576,169 @@ func TestConcurrency(t *testing.T) {
 	// 依赖 go test -race 检测数据竞争
 }
 
+func TestEventsEmptyEmitter(t *testing.T) {
+	em := NewEmitter[string, string]()
+	events := em.Events()
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for new emitter, got %d", len(events))
+	}
+}
+
+func TestEventsAfterRemoveAll(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.On("a", func(s string) {})
+	em.On("b", func(s string) {})
+
+	em.RemoveAllListeners("a")
+	events := em.Events()
+	if len(events) != 1 {
+		t.Errorf("expected 1 event after removing 'a', got %d", len(events))
+	}
+
+	em.RemoveAllListeners("b")
+	events = em.Events()
+	if len(events) != 0 {
+		t.Errorf("expected 0 events after removing all, got %d", len(events))
+	}
+}
+
+func TestTotalListenerCountEmpty(t *testing.T) {
+	em := NewEmitter[string, string]()
+	if total := em.TotalListenerCount(); total != 0 {
+		t.Errorf("expected 0 total for new emitter, got %d", total)
+	}
+}
+
+func TestTotalListenerCountAfterChanges(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.On("a", func(s string) {})
+	em.On("a", func(s string) {})
+	sub := em.On("b", func(s string) {})
+
+	if total := em.TotalListenerCount(); total != 3 {
+		t.Errorf("expected 3, got %d", total)
+	}
+
+	sub.Unsubscribe()
+	if total := em.TotalListenerCount(); total != 2 {
+		t.Errorf("expected 2 after unsubscribe, got %d", total)
+	}
+
+	em.RemoveAllListeners("a")
+	if total := em.TotalListenerCount(); total != 0 {
+		t.Errorf("expected 0 after RemoveAll, got %d", total)
+	}
+}
+
+func TestPointerTypeParameter(t *testing.T) {
+	type Data struct{ Value int }
+	em := NewEmitter[string, *Data]()
+	var received *Data
+
+	em.On("ptr_event", func(d *Data) { received = d })
+
+	original := &Data{Value: 42}
+	em.EmitSync("ptr_event", original)
+
+	if received != original {
+		t.Error("pointer identity should be preserved")
+	}
+	if received.Value != 42 {
+		t.Errorf("expected 42, got %d", received.Value)
+	}
+}
+
+func TestInterfaceTypeParameter(t *testing.T) {
+	em := NewEmitter[string, any]()
+	var received any
+
+	em.On("any_event", func(v any) { received = v })
+	em.EmitSync("any_event", "a string value")
+
+	if s, ok := received.(string); !ok || s != "a string value" {
+		t.Errorf("expected 'a string value', got %v", received)
+	}
+}
+
+func TestEmitWaitWithConcurrency(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetConcurrency(2)
+
+	var mu sync.Mutex
+	executed := make([]int, 0, 4)
+
+	for i := range 4 {
+		idx := i
+		em.On("test", func(s string) {
+			time.Sleep(20 * time.Millisecond)
+			mu.Lock()
+			executed = append(executed, idx)
+			mu.Unlock()
+		})
+	}
+
+	em.EmitWait("test", "data")
+
+	if len(executed) != 4 {
+		t.Errorf("expected 4 executions, got %d", len(executed))
+	}
+}
+
+func TestRecoverWithAsyncEmit(t *testing.T) {
+	em := NewEmitter[string, string]()
+	recovered := make(chan any, 1)
+
+	em.RecoverWith(func(event string, listener any, panicValue any) {
+		recovered <- panicValue
+	})
+
+	em.On("test", func(s string) { panic("async panic") })
+	em.Emit("test", "data")
+
+	select {
+	case pv := <-recovered:
+		if pv != "async panic" {
+			t.Errorf("expected 'async panic', got %v", pv)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timeout waiting for async recover")
+	}
+}
+
+func TestConcurrentSetConcurrency(t *testing.T) {
+	em := NewEmitter[string, string]()
+	var wg sync.WaitGroup
+
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			em.SetConcurrency(2)
+		}()
+		go func() {
+			defer wg.Done()
+			em.EmitWait("test", "data")
+		}()
+	}
+
+	wg.Wait()
+	// 依赖 go test -race 检测数据竞争
+}
+
+func TestEmitReturnValueChaining(t *testing.T) {
+	em := NewEmitter[string, int]()
+
+	result := em.
+		EmitSync("a", 1).
+		EmitSync("b", 2).
+		Emit("c", 3).
+		EmitWait("d", 4)
+
+	if result != em {
+		t.Error("chained emits should return the same emitter")
+	}
+}
+
 // testLogger 实现 Logger 接口用于测试
 type testLogger struct {
 	warnings []string
@@ -607,4 +771,55 @@ func TestMaxListenersWarning(t *testing.T) {
 	if em.GetListenerCount("test") != 2 {
 		t.Errorf("expected 2 listeners despite warning, got %d", em.GetListenerCount("test"))
 	}
+}
+
+// Example 演示基本的事件发射和监听流程。
+func Example_basic() {
+	em := NewEmitter[string, string]()
+	em.On("greet", func(msg string) {
+		fmt.Println("received:", msg)
+	})
+	em.EmitSync("greet", "hello")
+	// Output: received: hello
+}
+
+// Example 演示 Once 一次性监听器。
+func Example_once() {
+	em := NewEmitter[string, int]()
+	counter := 0
+	em.Once("increment", func(n int) {
+		counter += n
+	})
+	em.EmitSync("increment", 1)
+	em.EmitSync("increment", 10) // 不会执行
+	fmt.Println("counter:", counter)
+	// Output: counter: 1
+}
+
+// Example 演示 Subscription 取消监听。
+func ExampleSubscription_Unsubscribe() {
+	em := NewEmitter[string, string]()
+	sub := em.On("event", func(msg string) {
+		fmt.Println(msg)
+	})
+	sub.Unsubscribe()
+	em.EmitSync("event", "should not print")
+	fmt.Println("done")
+	// Output: done
+}
+
+// Example 演示链式配置和并发控制。
+func Example_chaining() {
+	em := NewEmitter[string, string]()
+	em.SetMaxListeners(20).
+		SetConcurrency(4).
+		RecoverWith(func(event string, listener any, panicValue any) {
+			fmt.Println("recovered:", panicValue)
+		})
+
+	em.On("task", func(data string) {
+		fmt.Println("processing:", data)
+	})
+	em.EmitSync("task", "job-1")
+	// Output: processing: job-1
 }

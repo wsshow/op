@@ -1,0 +1,62 @@
+# golangci-lint configuration for github.com/wsshow/op
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  go: "1.24"
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - gocritic
+    - gosec
+    - nilerr
+    - prealloc
+    - unconvert
+    - unparam
+    - wastedassign
+    - errorlint
+    - makezero
+    - predeclared
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/wsshow/op
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+      - experimental
+      - opinionated
+  gosec:
+    excludes:
+      - G104 # errcheck handles this
+  errcheck:
+    check-blank: true
+  staticcheck:
+    checks: ["all"]
+
+issues:
+  exclude-rules:
+    # Test files may use dot imports for gomock
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+    # Exported functions must have comments - handled by review
+    - linters:
+        - golint
+      text: "should have comment"
+  max-issues-per-linter: 0
+  max-same-issues: 0

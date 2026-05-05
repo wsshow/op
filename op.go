@@ -111,6 +111,11 @@ func NewWorkerPool(maxWorkers int, opts ...Option) *WorkerPool {
 	return workerpool.New(maxWorkers, opts...)
 }
 
+// WithPanicHandler 设置工作协程池的 panic 处理器，当任务发生 panic 时调用。
+func WithPanicHandler(handler func(any)) Option {
+	return workerpool.WithPanicHandler(handler)
+}
+
 // ---------------------------------------------------------------------------
 // 系统
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 package str
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -82,6 +83,19 @@ func TestRuneLength(t *testing.T) {
 	s := New("hello 世界")
 	if s.RuneLength() != 8 {
 		t.Errorf("RuneLength: expected 8, got %d", s.RuneLength())
+	}
+}
+
+func TestBytes(t *testing.T) {
+	s := New("hello")
+	b := s.Bytes()
+	if string(b) != "hello" {
+		t.Errorf("Bytes: expected 'hello', got '%s'", string(b))
+	}
+	// Mutation safety
+	b[0] = 'x'
+	if s.String() != "hello" {
+		t.Error("Bytes should return a copy, not the underlying data")
 	}
 }
 
@@ -449,4 +463,37 @@ func TestContainsRune(t *testing.T) {
 	if s.ContainsRune('x') {
 		t.Error("ContainsRune: 'hello' does not contain 'x'")
 	}
+}
+
+func ExampleNew() {
+	s := New("Hello, World!")
+	fmt.Println(s.ToLower().String())
+	// Output: hello, world!
+}
+
+func ExampleString_ReplaceAll() {
+	s := New("hello world")
+	s.ReplaceAll("world", "earth")
+	fmt.Println(s.String())
+	// Output: hello earth
+}
+
+func ExampleString_Substring() {
+	s := New("Hello, 世界!")
+	sub := s.Substring(0, 5)
+	fmt.Println(sub.String())
+	// Output: Hello
+}
+
+func ExampleString_Reverse() {
+	s := New("Hello")
+	s.Reverse()
+	fmt.Println(s.String())
+	// Output: olleH
+}
+
+func ExampleJoin() {
+	s := Join([]string{"a", "b", "c"}, "-")
+	fmt.Println(s.String())
+	// Output: a-b-c
 }

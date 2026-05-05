@@ -88,6 +88,7 @@ func (g *Generator[T]) Next(values ...any) (value T, done bool) {
 		}
 		select {
 		case g.yield.resultCh <- result:
+		case <-g.closeCh:
 		case <-g.stopCh:
 		}
 		return val, false

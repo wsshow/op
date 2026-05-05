@@ -97,6 +97,11 @@ func (s *Slice[T]) Length() int {
 	return len(s.data)
 }
 
+// Cap 返回底层数组的容量。
+func (s *Slice[T]) Cap() int {
+	return cap(s.data)
+}
+
 // IsEmpty 检查切片是否为空。
 func (s *Slice[T]) IsEmpty() bool {
 	return len(s.data) == 0

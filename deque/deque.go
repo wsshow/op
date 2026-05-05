@@ -286,8 +286,11 @@ func (d *Deque[T]) Remove(at int) T {
 }
 
 // SetBaseCapacity 设置基础容量（向上取整到 2 的幂）。
-// 缩容时不会缩小到基础容量以下。
+// baseCap <= 0 时重置为默认最小容量。缩容时不会缩小到基础容量以下。
 func (d *Deque[T]) SetBaseCapacity(baseCap int) {
+	if baseCap <= 0 {
+		baseCap = minCapacity
+	}
 	newCap := ceilPowerOfTwo(baseCap)
 	d.baseCap = newCap
 	if d.buffer != nil && d.Capacity() < newCap {

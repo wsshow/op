@@ -215,7 +215,7 @@ func (e *Emitter[E, T]) Emit(event E, value T) *Emitter[E, T] {
 				if snap.sem != nil {
 					defer func() { <-snap.sem }() // 释放信号量令牌
 				}
-				e.callListener(event, w.listener, snap.recoverer, snap.logger, value)
+				callListener(event, w.listener, snap.recoverer, snap.logger, value)
 			}()
 		}
 	}()
@@ -243,7 +243,7 @@ func (e *Emitter[E, T]) EmitWait(event E, value T) *Emitter[E, T] {
 			if snap.sem != nil {
 				defer func() { <-snap.sem }() // 释放信号量令牌
 			}
-			e.callListener(event, w.listener, snap.recoverer, snap.logger, value)
+			callListener(event, w.listener, snap.recoverer, snap.logger, value)
 		}()
 	}
 	wg.Wait()
@@ -255,13 +255,14 @@ func (e *Emitter[E, T]) EmitWait(event E, value T) *Emitter[E, T] {
 func (e *Emitter[E, T]) EmitSync(event E, value T) *Emitter[E, T] {
 	snap := e.prepareEmit(event)
 	for _, w := range snap.listeners {
-		e.callListener(event, w.listener, snap.recoverer, snap.logger, value)
+		callListener(event, w.listener, snap.recoverer, snap.logger, value)
 	}
 	return e
 }
 
-// callListener 调用监听器，始终 recover panic
-func (e *Emitter[E, T]) callListener(event E, listener Listener[T], recoverer RecoveryListener[E, T], logger Logger, value T) {
+// callListener 调用监听器，始终 recover panic。
+// 所有参数通过值传递，不依赖 Emitter 状态，确保并发安全。
+func callListener[E comparable, T any](event E, listener Listener[T], recoverer RecoveryListener[E, T], logger Logger, value T) {
 	defer func() {
 		if r := recover(); r != nil {
 			if recoverer != nil {

@@ -247,3 +247,8 @@ func (s *String) Clone() *String {
 func (s *String) String() string {
 	return s.str
 }
+
+// Bytes 返回字符串的字节切片副本。
+func (s *String) Bytes() []byte {
+	return []byte(s.str)
+}

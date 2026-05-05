@@ -1,6 +1,7 @@
 package deque
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"unicode"
@@ -755,4 +756,41 @@ func TestGetAt(t *testing.T) {
 	if ok {
 		t.Error("GetAt(2) should return false")
 	}
+}
+
+func ExampleNew() {
+	d := New[int]()
+	d.PushBack(1)
+	d.PushBack(2)
+	d.PushFront(0)
+	for d.Size() > 0 {
+		fmt.Println(d.PopFront())
+	}
+	// Output:
+	// 0
+	// 1
+	// 2
+}
+
+func ExampleDeque_PushBack() {
+	d := New[int]()
+	d.PushBack(1)
+	d.PushBack(2)
+	fmt.Println(d.PopFront(), d.PopFront())
+	// Output: 1 2
+}
+
+func ExampleDeque_Rotate() {
+	d := New[int]()
+	d.PushBack(1)
+	d.PushBack(2)
+	d.PushBack(3)
+	d.Rotate(1)
+	for d.Size() > 0 {
+		fmt.Println(d.PopFront())
+	}
+	// Output:
+	// 2
+	// 3
+	// 1
 }

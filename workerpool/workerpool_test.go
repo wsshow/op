@@ -273,3 +273,32 @@ func assertPanics(t *testing.T, msg string, f func()) {
 	}()
 	f()
 }
+
+func TestPanicHandler(t *testing.T) {
+	var panicValue any
+	pool := New(1, WithPanicHandler(func(v any) {
+		panicValue = v
+	}))
+	pool.Submit(func() {
+		panic("test panic")
+	})
+	pool.Submit(func() {}) // drain to ensure first task completes
+	pool.StopWait()
+
+	if panicValue == nil {
+		t.Error("panic handler should have been called")
+	}
+	if panicValue != "test panic" {
+		t.Errorf("expected panic value 'test panic', got %v", panicValue)
+	}
+}
+
+func TestPanicWithoutHandler(t *testing.T) {
+	pool := New(1)
+	pool.Submit(func() {
+		panic("should not crash program")
+	})
+	pool.Submit(func() {}) // drain
+	pool.StopWait()
+	// reaches here = no crash
+}

@@ -2,6 +2,7 @@ package linq
 
 import (
 	"cmp"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -795,4 +796,41 @@ func TestThenByDescending(t *testing.T) {
 	if result[0].b != 3 || result[1].b != 2 || result[2].b != 1 {
 		t.Errorf("ThenByDescending: expected b=[3,2,1,0], got %v", result)
 	}
+}
+
+func ExampleFrom() {
+	nums := From([]int{1, 2, 3, 4, 5}).
+		Where(func(x int) bool { return x%2 == 0 }).
+		Select(func(x int) int { return x * 2 })
+	fmt.Println(nums.Results())
+	// Output: [4 8]
+}
+
+func ExampleOrderBy() {
+	type Person struct{ Name string; Age int }
+	people := From([]Person{{"Bob", 30}, {"Alice", 25}})
+	sorted := OrderBy(people, func(p Person) int { return p.Age })
+	for _, p := range sorted.Results() {
+		fmt.Println(p.Name)
+	}
+	// Output:
+	// Alice
+	// Bob
+}
+
+func ExampleRange() {
+	l := Range(0, 5)
+	fmt.Println(l.Results())
+	// Output: [0 1 2 3 4]
+}
+
+func ExampleGroupBy() {
+	nums := From([]int{1, 2, 3, 4, 5})
+	groups := GroupBy(nums, func(x int) int { return x % 2 })
+	for _, g := range groups {
+		fmt.Printf("%d: %v\n", g.Key, g.Items)
+	}
+	// Output:
+	// 1: [1 3 5]
+	// 0: [2 4]
 }

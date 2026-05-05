@@ -371,13 +371,19 @@ func (ol OrderedLinq[T]) ThenByDescending(cmpFn func(a, b T) int) OrderedLinq[T]
 // Aggregation
 // ---------------------------------------------------------------------------
 
-// Count 返回序列中的元素数量。
+// Count 返回序列中的元素数量。序列存在错误时返回 0。
 func (l Linq[T]) Count() int {
+	if l.err != nil {
+		return 0
+	}
 	return len(l.data)
 }
 
-// CountBy 返回满足 predicate 的元素数量。
+// CountBy 返回满足 predicate 的元素数量。序列存在错误时返回 0。
 func (l Linq[T]) CountBy(predicate func(T) bool) int {
+	if l.err != nil {
+		return 0
+	}
 	count := 0
 	for _, item := range l.data {
 		if predicate(item) {
@@ -936,8 +942,11 @@ func Zip[T, U, R any](l1 Linq[T], l2 Linq[U], resultSelector func(T, U) R) Linq[
 // Conditional / Execution
 // ---------------------------------------------------------------------------
 
-// Any 检查是否存在满足 predicate 的元素。
+// Any 检查是否存在满足 predicate 的元素。序列存在错误时返回 false。
 func (l Linq[T]) Any(predicate func(T) bool) bool {
+	if l.err != nil {
+		return false
+	}
 	for _, item := range l.data {
 		if predicate(item) {
 			return true
@@ -946,8 +955,11 @@ func (l Linq[T]) Any(predicate func(T) bool) bool {
 	return false
 }
 
-// All 检查是否所有元素都满足 predicate。空序列返回 true。
+// All 检查是否所有元素都满足 predicate。空序列返回 true，序列存在错误时返回 false。
 func (l Linq[T]) All(predicate func(T) bool) bool {
+	if l.err != nil {
+		return false
+	}
 	for _, item := range l.data {
 		if !predicate(item) {
 			return false

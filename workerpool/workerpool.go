@@ -28,6 +28,14 @@ func WithIdleTimeout(d time.Duration) Option {
 	}
 }
 
+// WithPanicHandler 设置 panic 处理器，当任务发生 panic 时调用。
+// 若未设置，任务中的 panic 将被静默恢复，不会导致程序崩溃。
+func WithPanicHandler(handler func(any)) Option {
+	return func(p *WorkerPool) {
+		p.panicHandler = handler
+	}
+}
+
 // WorkerPool 是一个工作协程池，限制并发执行任务的协程数量不超过指定最大值。
 // 当所有工作协程繁忙时，新任务将被放入等待队列。
 // 空闲的工作协程在超过空闲超时时间后会被自动回收。
@@ -48,6 +56,7 @@ type WorkerPool struct {
 	isStopped    bool
 	waitAll      bool
 	waitingCount atomic.Int32
+	panicHandler func(any)
 }
 
 // New 创建并启动一个工作协程池。
@@ -70,7 +79,9 @@ func New(maxWorkers int, opts ...Option) *WorkerPool {
 	}
 
 	for _, opt := range opts {
-		opt(pool)
+		if opt != nil {
+			opt(pool)
+		}
 	}
 
 	go pool.dispatch()
@@ -105,7 +116,7 @@ func (p *WorkerPool) Stopped() bool {
 // Submit 将任务提交到协程池中执行。
 //
 // 任务将被立即分配给可用的工作协程，若所有协程都在执行任务，
-// 则新任务将加入等待队列。Submit 不会阻塞调用方。
+// 则新任务将加入等待队列。Submit 会阻塞直到调度器接收任务。
 // task 为 nil 时将被忽略。协程池停止后调用将触发 panic。
 func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
@@ -237,7 +248,7 @@ func (p *WorkerPool) handleTask(task func(), workerCount *int, wg *sync.WaitGrou
 	default:
 		if *workerCount < p.maxWorkers {
 			wg.Add(1)
-			go worker(task, p.workerChan, wg)
+			go worker(task, p.workerChan, wg, p.panicHandler)
 			*workerCount++
 		} else {
 			p.waitingQueue.PushBack(task)
@@ -248,10 +259,20 @@ func (p *WorkerPool) handleTask(task func(), workerCount *int, wg *sync.WaitGrou
 
 // worker 是工作协程的执行函数。
 // 持续从 workerChan 接收并执行任务，收到 nil 时退出。
-func worker(task func(), workerChan chan func(), wg *sync.WaitGroup) {
+// 任务中的 panic 会被恢复，不会导致整个程序崩溃。
+func worker(task func(), workerChan chan func(), wg *sync.WaitGroup, panicHandler func(any)) {
 	defer wg.Done()
 	for task != nil {
-		task()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if panicHandler != nil {
+						panicHandler(r)
+					}
+				}
+			}()
+			task()
+		}()
 		task = <-workerChan
 	}
 }
