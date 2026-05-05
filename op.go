@@ -13,7 +13,7 @@ import (
 // NewString 创建一个新的字符串对象
 // 参数 s: 初始字符串值
 func NewString(s string) *str.String {
-	return str.NewString(s)
+	return str.New(s)
 }
 
 // NewSlice 创建一个新的泛型切片对象
