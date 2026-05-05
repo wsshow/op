@@ -1,5 +1,7 @@
 // Package linq 提供泛型 LINQ 风格的查询工具，
 // 支持对切片数据进行过滤、投影、排序、分组、集合运算等链式操作。
+//
+// Linq 为值类型，非并发安全。
 package linq
 
 import (
@@ -341,7 +343,7 @@ func OrderByDescending[T any, K cmp.Ordered](l Linq[T], keySelector func(T) K) O
 	}
 }
 
-// ThenBy 在已有排序基础上追加次级比较条件。可多次链式调用，优先级与调用顺序一致。
+// ThenBy 在已有排序基础上追加次级升序比较条件。可多次链式调用，优先级与调用顺序一致。
 func (ol OrderedLinq[T]) ThenBy(cmpFn func(a, b T) int) OrderedLinq[T] {
 	if ol.err != nil {
 		return ol
@@ -355,6 +357,14 @@ func (ol OrderedLinq[T]) ThenBy(cmpFn func(a, b T) int) OrderedLinq[T] {
 	}
 	sort.SliceStable(ol.data, func(i, j int) bool { return ol.cmp(ol.data[i], ol.data[j]) < 0 })
 	return ol
+}
+
+// ThenByDescending 在已有排序基础上追加次级降序比较条件。
+func (ol OrderedLinq[T]) ThenByDescending(cmpFn func(a, b T) int) OrderedLinq[T] {
+	if ol.err != nil {
+		return ol
+	}
+	return ol.ThenBy(func(a, b T) int { return -cmpFn(a, b) })
 }
 
 // ---------------------------------------------------------------------------
@@ -396,17 +406,12 @@ func Average[T Numeric](l Linq[T]) float64 {
 	return float64(Sum(l)) / float64(len(l.data))
 }
 
-// Min 返回序列中的最小元素。需要先通过 [Linq.WithComparer] 设置比较函数。
-func (l Linq[T]) Min() (T, error) {
+// Min 返回序列中的最小元素。需先通过 [Linq.WithComparer] 设置比较函数。
+// 序列为空、存在错误或未设置比较函数时返回 (零值, false)。
+func (l Linq[T]) Min() (T, bool) {
 	var zero T
-	if l.err != nil {
-		return zero, l.err
-	}
-	if len(l.data) == 0 {
-		return zero, &LinqError{Op: "Min", Msg: "sequence is empty"}
-	}
-	if l.compare == nil {
-		return zero, errNoComparer("Min")
+	if l.err != nil || len(l.data) == 0 || l.compare == nil {
+		return zero, false
 	}
 	result := l.data[0]
 	for i := 1; i < len(l.data); i++ {
@@ -414,20 +419,15 @@ func (l Linq[T]) Min() (T, error) {
 			result = l.data[i]
 		}
 	}
-	return result, nil
+	return result, true
 }
 
-// Max 返回序列中的最大元素。需要先通过 [Linq.WithComparer] 设置比较函数。
-func (l Linq[T]) Max() (T, error) {
+// Max 返回序列中的最大元素。需先通过 [Linq.WithComparer] 设置比较函数。
+// 序列为空、存在错误或未设置比较函数时返回 (零值, false)。
+func (l Linq[T]) Max() (T, bool) {
 	var zero T
-	if l.err != nil {
-		return zero, l.err
-	}
-	if len(l.data) == 0 {
-		return zero, &LinqError{Op: "Max", Msg: "sequence is empty"}
-	}
-	if l.compare == nil {
-		return zero, errNoComparer("Max")
+	if l.err != nil || len(l.data) == 0 || l.compare == nil {
+		return zero, false
 	}
 	result := l.data[0]
 	for i := 1; i < len(l.data); i++ {
@@ -435,7 +435,7 @@ func (l Linq[T]) Max() (T, error) {
 			result = l.data[i]
 		}
 	}
-	return result, nil
+	return result, true
 }
 
 // MinBy 返回使 keySelector 值最小的元素。空序列或存在错误时返回 (零值, false)。

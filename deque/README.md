@@ -87,7 +87,7 @@ func main() {
 - `Capacity() int`: Returns the current capacity of the queue.
 - `Size() int`: Returns the current number of elements.
 - `Grow(n int)`: Ensures space for at least n additional elements.
-- `SetBaseCap(baseCap int)`: Sets the base capacity.
+- `SetBaseCapacity(baseCap int)`: Sets the base capacity.
 
 ### Additional Operations
 

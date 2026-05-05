@@ -258,35 +258,35 @@ func TestAverage(t *testing.T) {
 
 func TestMin(t *testing.T) {
 	l := From([]int{3, 1, 2}).WithComparer(func(a, b int) int { return a - b })
-	min, err := l.Min()
-	if err != nil || min != 1 {
-		t.Errorf("Min should return (1, nil), got (%d, %v)", min, err)
+	min, ok := l.Min()
+	if !ok || min != 1 {
+		t.Errorf("Min should return (1, true), got (%d, %v)", min, ok)
 	}
 
 	// 未设置比较函数
-	_, err = From([]int{1, 2}).Min()
-	if err == nil {
-		t.Error("Min without comparer should return error")
+	_, ok = From([]int{1, 2}).Min()
+	if ok {
+		t.Error("Min without comparer should return false")
 	}
 
 	// 空序列
-	_, err = From([]int{}).WithComparer(func(a, b int) int { return a - b }).Min()
-	if err == nil {
-		t.Error("Min on empty should return error")
+	_, ok = From([]int{}).WithComparer(func(a, b int) int { return a - b }).Min()
+	if ok {
+		t.Error("Min on empty should return false")
 	}
 }
 
 func TestMax(t *testing.T) {
 	l := From([]int{3, 1, 2}).WithComparer(func(a, b int) int { return a - b })
-	max, err := l.Max()
-	if err != nil || max != 3 {
-		t.Errorf("Max should return (3, nil), got (%d, %v)", max, err)
+	max, ok := l.Max()
+	if !ok || max != 3 {
+		t.Errorf("Max should return (3, true), got (%d, %v)", max, ok)
 	}
 
 	// 空序列
-	_, err = From([]int{}).WithComparer(func(a, b int) int { return a - b }).Max()
-	if err == nil {
-		t.Error("Max on empty should return error")
+	_, ok = From([]int{}).WithComparer(func(a, b int) int { return a - b }).Max()
+	if ok {
+		t.Error("Max on empty should return false")
 	}
 }
 
@@ -782,4 +782,17 @@ func stringsToLower(s string) string {
 		lower[i] = c
 	}
 	return string(lower)
+}
+
+func TestThenByDescending(t *testing.T) {
+	type item struct{ a, b int }
+	data := From([]item{{1, 3}, {1, 1}, {1, 2}, {2, 0}})
+	ol := OrderBy(data, func(x item) int { return x.a })
+	result := ol.ThenByDescending(func(a, b item) int { return a.b - b.b }).Results()
+	if len(result) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(result))
+	}
+	if result[0].b != 3 || result[1].b != 2 || result[2].b != 1 {
+		t.Errorf("ThenByDescending: expected b=[3,2,1,0], got %v", result)
+	}
 }

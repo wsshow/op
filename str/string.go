@@ -1,3 +1,9 @@
+// Package str 提供字符串包装器，支持丰富的字符串操作。
+//
+// 大多数方法原地修改并返回自身以支持链式调用；Concat、Format、Substring、Clone、Join
+// 返回新实例而不修改原对象。
+//
+// 该类型非并发安全。
 package str
 
 import (
@@ -20,6 +26,16 @@ func New(s string) *String {
 // Contains 检查字符串是否包含指定子串。
 func (s *String) Contains(substr string) bool {
 	return strings.Contains(s.str, substr)
+}
+
+// ContainsAny 检查字符串是否包含指定字符集中的任意字符。
+func (s *String) ContainsAny(chars string) bool {
+	return strings.ContainsAny(s.str, chars)
+}
+
+// ContainsRune 检查字符串是否包含指定 rune。
+func (s *String) ContainsRune(r rune) bool {
+	return strings.ContainsRune(s.str, r)
 }
 
 // Index 返回子串第一次出现的位置，若未找到返回 -1。
@@ -45,6 +61,11 @@ func (s *String) Split(sep string) []string {
 // Fields 将字符串按空白字符分割成切片。
 func (s *String) Fields() []string {
 	return strings.Fields(s.str)
+}
+
+// SplitN 将字符串按分隔符分割为最多 n 个子串。
+func (s *String) SplitN(sep string, n int) []string {
+	return strings.SplitN(s.str, sep, n)
 }
 
 // Length 返回字符串的字节长度。

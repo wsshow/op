@@ -140,3 +140,10 @@ func TestTypeAliases(t *testing.T) {
 	var _ *Generator[int]
 	var _ *WorkerPool
 }
+
+func TestJoinStrings(t *testing.T) {
+	s := JoinStrings([]string{"a", "b", "c"}, "-")
+	if s.String() != "a-b-c" {
+		t.Errorf("JoinStrings: expected 'a-b-c', got '%s'", s.String())
+	}
+}

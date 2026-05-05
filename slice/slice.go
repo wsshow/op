@@ -1,3 +1,7 @@
+// Package slice 提供泛型切片包装器，支持函数式操作（Map、Filter、Reduce）、
+// 元素增删改查、排序、反转等常用操作。
+//
+// 该类型非并发安全。
 package slice
 
 import (

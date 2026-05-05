@@ -1,3 +1,5 @@
+// Package op 是工具库的统一入口，重导出各子包的核心类型与构造函数。
+// 导入本包后无需单独导入子包即可使用全部功能。
 package op
 
 import (
@@ -57,6 +59,9 @@ type Options = process.Options
 
 // NewString 创建一个新的字符串对象。
 func NewString(s string) *str.String { return str.New(s) }
+
+// JoinStrings 使用分隔符连接字符串切片，返回新 String 对象。
+func JoinStrings(elems []string, sep string) *str.String { return str.Join(elems, sep) }
 
 // NewSlice 创建一个新的泛型切片对象，可传入初始值。
 func NewSlice[T any](values ...T) *slice.Slice[T] { return slice.New(values...) }

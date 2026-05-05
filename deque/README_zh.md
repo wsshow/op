@@ -87,7 +87,7 @@ func main() {
 - `Capacity() int`: 返回当前容量。
 - `Size() int`: 返回当前元素数量。
 - `Grow(n int)`: 确保有空间容纳额外 n 个元素。
-- `SetBaseCap(baseCap int)`: 设置基础容量。
+- `SetBaseCapacity(baseCap int)`: 设置基础容量。
 
 ### 其他操作
 

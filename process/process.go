@@ -1,3 +1,7 @@
+// Package process 提供外部进程的生命周期管理，支持启动、停止、重启、
+// 标准输出/错误的逐行回调以及多进程管理。
+//
+// Process 和 Manager 均并发安全。
 package process
 
 import (

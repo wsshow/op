@@ -1,5 +1,7 @@
 // Package deque 提供了一个基于环形缓冲区的高性能泛型双端队列实现。
 // 支持 O(1) 的头尾插入/删除操作，以及自动扩缩容。
+//
+// 非并发安全。
 package deque
 
 import "fmt"
@@ -31,7 +33,7 @@ type Deque[T any] struct {
 func New[T any](capacity ...int) *Deque[T] {
 	d := &Deque[T]{baseCap: minCapacity}
 	if len(capacity) > 0 && capacity[0] > 0 {
-		d.SetBaseCap(capacity[0])
+		d.SetBaseCapacity(capacity[0])
 	}
 	return d
 }
@@ -110,6 +112,51 @@ func (d *Deque[T]) Back() T {
 		panic("deque: Back() called when empty")
 	}
 	return d.buffer[d.prevIndex(d.tailIdx)]
+}
+
+// PeekFront 返回队列头部元素，空时返回零值和 false。
+func (d *Deque[T]) PeekFront() (T, bool) {
+	if d.size == 0 {
+		var zero T
+		return zero, false
+	}
+	return d.buffer[d.headIdx], true
+}
+
+// PeekBack 返回队列尾部元素，空时返回零值和 false。
+func (d *Deque[T]) PeekBack() (T, bool) {
+	if d.size == 0 {
+		var zero T
+		return zero, false
+	}
+	return d.buffer[d.prevIndex(d.tailIdx)], true
+}
+
+// TryPopFront 从头部移除并返回元素，空时返回零值和 false。
+func (d *Deque[T]) TryPopFront() (T, bool) {
+	if d.size == 0 {
+		var zero T
+		return zero, false
+	}
+	return d.PopFront(), true
+}
+
+// TryPopBack 从尾部移除并返回元素，空时返回零值和 false。
+func (d *Deque[T]) TryPopBack() (T, bool) {
+	if d.size == 0 {
+		var zero T
+		return zero, false
+	}
+	return d.PopBack(), true
+}
+
+// GetAt 返回指定索引处的元素，索引无效时返回零值和 false。
+func (d *Deque[T]) GetAt(index int) (T, bool) {
+	if index < 0 || index >= d.size {
+		var zero T
+		return zero, false
+	}
+	return d.buffer[d.realIndex(index)], true
 }
 
 // At 返回指定索引处的元素（不移除）。若索引无效则 panic。
@@ -238,12 +285,11 @@ func (d *Deque[T]) Remove(at int) T {
 	return d.removeFromMiddle(at)
 }
 
-// SetBaseCap 设置基础容量（向上取整到 2 的幂）。
+// SetBaseCapacity 设置基础容量（向上取整到 2 的幂）。
 // 缩容时不会缩小到基础容量以下。
-func (d *Deque[T]) SetBaseCap(baseCap int) {
+func (d *Deque[T]) SetBaseCapacity(baseCap int) {
 	newCap := ceilPowerOfTwo(baseCap)
 	d.baseCap = newCap
-	// 只有在已经分配了 buffer 且容量不足时才调整大小
 	if d.buffer != nil && d.Capacity() < newCap {
 		d.resize(newCap)
 	}

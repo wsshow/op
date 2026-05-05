@@ -422,3 +422,31 @@ func TestChainingWithConcatAndSubstring(t *testing.T) {
 		t.Errorf("Chaining+Concat: original modified: '%s'", s.String())
 	}
 }
+
+func TestSplitN(t *testing.T) {
+	s := New("a,b,c,d")
+	parts := s.SplitN(",", 3)
+	if len(parts) != 3 || parts[0] != "a" || parts[1] != "b" || parts[2] != "c,d" {
+		t.Errorf("SplitN: expected [a b c,d], got %v", parts)
+	}
+}
+
+func TestContainsAny(t *testing.T) {
+	s := New("hello")
+	if !s.ContainsAny("aeiou") {
+		t.Error("ContainsAny: 'hello' contains vowels")
+	}
+	if s.ContainsAny("xyz") {
+		t.Error("ContainsAny: 'hello' does not contain xyz")
+	}
+}
+
+func TestContainsRune(t *testing.T) {
+	s := New("hello")
+	if !s.ContainsRune('e') {
+		t.Error("ContainsRune: 'hello' contains 'e'")
+	}
+	if s.ContainsRune('x') {
+		t.Error("ContainsRune: 'hello' does not contain 'x'")
+	}
+}

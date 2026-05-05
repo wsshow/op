@@ -167,7 +167,7 @@ func TestGrow(t *testing.T) {
 func TestNew(t *testing.T) {
 	minCap := 64
 	q := &Deque[string]{}
-	q.SetBaseCap(minCap)
+	q.SetBaseCapacity(minCap)
 	assertEqual(t, q.Capacity(), 0, "should not have allocated memory yet")
 	q.PushBack("foo")
 	q.PopFront()
@@ -176,7 +176,7 @@ func TestNew(t *testing.T) {
 
 	curCap := 128
 	q = new(Deque[string])
-	q.SetBaseCap(minCap)
+	q.SetBaseCapacity(minCap)
 	q.Grow(curCap)
 	assertEqual(t, q.Capacity(), curCap, "wrong capacity, expected %d", curCap)
 	assertEqual(t, q.Size(), 0, "Size() should return 0")
@@ -391,17 +391,17 @@ func TestRemoveOutOfRangePanics(t *testing.T) {
 	assertPanics(t, "should panic with out-of-range index", func() { q.Remove(1) })
 }
 
-// TestSetBaseCapacity 测试设置基础容量
-func TestSetBaseCapacity(t *testing.T) {
+// TestSetBaseCapacityacity 测试设置基础容量
+func TestSetBaseCapacityacity(t *testing.T) {
 	var q Deque[string]
-	q.SetBaseCap(200)
+	q.SetBaseCapacity(200)
 	q.PushBack("A")
 	assertEqual(t, q.baseCap, 256, "wrong minimum capacity")
 	assertEqual(t, q.Capacity(), 256, "wrong buffer size")
 	q.PopBack()
 	assertEqual(t, q.baseCap, 256, "wrong minimum capacity")
 	assertEqual(t, q.Capacity(), 256, "wrong buffer size")
-	q.SetBaseCap(0)
+	q.SetBaseCapacity(0)
 	assertEqual(t, q.baseCap, minCapacity, "wrong minimum capacity")
 }
 
@@ -497,7 +497,7 @@ func BenchmarkYoyo(b *testing.B) {
 // BenchmarkYoyoFixed 基准测试固定容量下的反复添加和移除性能
 func BenchmarkYoyoFixed(b *testing.B) {
 	var q Deque[int]
-	q.SetBaseCap(64000)
+	q.SetBaseCapacity(64000)
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 65536; j++ {
 			q.PushBack(j)
@@ -672,5 +672,87 @@ func testRotate(t *testing.T, size int) {
 	for i := q.Size() - 1; i >= 0; i-- {
 		q.Rotate(-1)
 		assertEqual(t, q.Front(), i, "wrong value during reverse rotation")
+	}
+}
+
+func TestPeekFront(t *testing.T) {
+	d := New[int]()
+	_, ok := d.PeekFront()
+	if ok {
+		t.Error("PeekFront on empty should return false")
+	}
+	d.PushBack(42)
+	v, ok := d.PeekFront()
+	if !ok || v != 42 {
+		t.Errorf("PeekFront expected (42, true), got (%d, %v)", v, ok)
+	}
+	if d.Size() != 1 {
+		t.Error("PeekFront should not remove element")
+	}
+}
+
+func TestPeekBack(t *testing.T) {
+	d := New[int]()
+	_, ok := d.PeekBack()
+	if ok {
+		t.Error("PeekBack on empty should return false")
+	}
+	d.PushBack(1)
+	d.PushBack(2)
+	v, ok := d.PeekBack()
+	if !ok || v != 2 {
+		t.Errorf("PeekBack expected (2, true), got (%d, %v)", v, ok)
+	}
+}
+
+func TestTryPopFront(t *testing.T) {
+	d := New[int]()
+	_, ok := d.TryPopFront()
+	if ok {
+		t.Error("TryPopFront on empty should return false")
+	}
+	d.PushBack(10)
+	v, ok := d.TryPopFront()
+	if !ok || v != 10 {
+		t.Errorf("TryPopFront expected (10, true), got (%d, %v)", v, ok)
+	}
+	if d.Size() != 0 {
+		t.Error("TryPopFront should remove element")
+	}
+}
+
+func TestTryPopBack(t *testing.T) {
+	d := New[int]()
+	_, ok := d.TryPopBack()
+	if ok {
+		t.Error("TryPopBack on empty should return false")
+	}
+	d.PushBack(10)
+	d.PushBack(20)
+	v, ok := d.TryPopBack()
+	if !ok || v != 20 {
+		t.Errorf("TryPopBack expected (20, true), got (%d, %v)", v, ok)
+	}
+}
+
+func TestGetAt(t *testing.T) {
+	d := New[int]()
+	_, ok := d.GetAt(0)
+	if ok {
+		t.Error("GetAt on empty should return false")
+	}
+	d.PushBack(1)
+	d.PushBack(2)
+	v, ok := d.GetAt(1)
+	if !ok || v != 2 {
+		t.Errorf("GetAt(1) expected (2, true), got (%d, %v)", v, ok)
+	}
+	_, ok = d.GetAt(-1)
+	if ok {
+		t.Error("GetAt(-1) should return false")
+	}
+	_, ok = d.GetAt(2)
+	if ok {
+		t.Error("GetAt(2) should return false")
 	}
 }
