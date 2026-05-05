@@ -411,17 +411,18 @@ func TestRestartConcurrent(t *testing.T) {
 		OnBefore: func(_ *Process) { atomic.AddInt32(&starts, 1) },
 	})
 	mustStart(t, p)
-	// 进程在 sleep，Stop 会阻塞到 cancel 生效，防止 CAS 获胜者瞬间完成
-	// 从而其他 goroutine 在 restarting 释放前都已检查 CAS 并退出。
 
 	var wg sync.WaitGroup
+	barrier := make(chan struct{})
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-barrier
 			p.Restart()
 		}()
 	}
+	close(barrier)
 	wg.Wait()
 	mustWait(t, p)
 
