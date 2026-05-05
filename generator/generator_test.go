@@ -1,51 +1,43 @@
 package generator
 
 import (
-	"sync"
 	"testing"
 	"time"
 )
 
-// TestNewGenerator 测试创建生成器
 func TestNewGenerator(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
 		for i := range 3 {
-			yield.Yield(i)
+			yield.Send(i)
 		}
 	})
-
-	// 检查初始状态
-	if gen.isDone {
-		t.Error("Newly created generator should not be done")
-	}
-	if gen.doneChan == nil || gen.yield.valueChan == nil || gen.yield.resultChan == nil {
-		t.Error("Generator channels should be initialized")
+	// 检查通道已初始化
+	if gen.yield.valueCh == nil || gen.yield.resultCh == nil || gen.stopCh == nil || gen.closeCh == nil {
+		t.Error("generator channels should be initialized")
 	}
 }
 
-// TestYield 测试 Yield 方法的值生成和返回值接收
-func TestYield(t *testing.T) {
+func TestSend(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
-		result := yield.Yield(42)
+		result := yield.Send(42)
 		if result != "ack" {
-			t.Errorf("Expected result 'ack', got %v", result)
+			t.Errorf("expected result 'ack', got %v", result)
 		}
 	})
 
 	value, done := gen.Next("ack")
 	if done {
-		t.Error("First call to Next should not be done")
+		t.Error("first Next should not be done")
 	}
 	if value != 42 {
-		t.Errorf("Expected value 42, got %d", value)
+		t.Errorf("expected value 42, got %d", value)
 	}
 }
 
-// TestNext 测试 Next 方法的迭代行为
 func TestNext(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
 		for i := 0; i < 3; i++ {
-			yield.Yield(i)
+			yield.Send(i)
 		}
 	})
 
@@ -56,33 +48,30 @@ func TestNext(t *testing.T) {
 			t.Errorf("Next should not be done at iteration %d", i)
 		}
 		if value != expected[i] {
-			t.Errorf("Expected value %d, got %d", expected[i], value)
+			t.Errorf("expected value %d, got %d", expected[i], value)
 		}
 	}
 
-	// 检查生成器完成
 	value, done := gen.Next()
 	if !done {
 		t.Error("Next should return done=true after generator completes")
 	}
-	if value != 0 { // 检查默认值
-		t.Errorf("Expected zero value after done, got %d", value)
+	if value != 0 {
+		t.Errorf("expected zero value after done, got %d", value)
 	}
 
-	// 再次调用 Next，应保持 done 状态
 	_, done = gen.Next()
 	if !done {
 		t.Error("Next should remain done after completion")
 	}
 }
 
-// TestNextWithResult 测试带返回值的 Next 调用
 func TestNextWithResult(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[string]) {
 		for i := 0; i < 2; i++ {
-			result := yield.Yield("value-" + string(rune('A'+i)))
+			result := yield.Send("value-" + string(rune('A'+i)))
 			if result != "ack-"+string(rune('A'+i)) {
-				t.Errorf("Expected result 'ack-%c', got %v", 'A'+i, result)
+				t.Errorf("expected result 'ack-%c', got %v", 'A'+i, result)
 			}
 		}
 	})
@@ -93,7 +82,7 @@ func TestNextWithResult(t *testing.T) {
 			t.Errorf("Next should not be done at iteration %d", i)
 		}
 		if value != "value-"+string(rune('A'+i)) {
-			t.Errorf("Expected value 'value-%c', got %s", 'A'+i, value)
+			t.Errorf("expected value 'value-%c', got %s", 'A'+i, value)
 		}
 	}
 
@@ -103,45 +92,38 @@ func TestNextWithResult(t *testing.T) {
 	}
 }
 
-// TestGeneratorDone 测试生成器完成后的行为
 func TestGeneratorDone(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
-		yield.Yield(1)
+		yield.Send(1)
 	})
 
-	// 获取第一个值
 	value, done := gen.Next()
 	if done {
-		t.Error("First call to Next should not be done")
+		t.Error("first Next should not be done")
 	}
 	if value != 1 {
-		t.Errorf("Expected value 1, got %d", value)
+		t.Errorf("expected value 1, got %d", value)
 	}
 
-	// 检查完成状态
 	value, done = gen.Next()
 	if !done {
 		t.Error("Next should return done=true after generator completes")
 	}
-	if !gen.isDone {
-		t.Error("Generator should be marked as done")
-	}
 
 	// 验证通道关闭
 	select {
-	case _, ok := <-gen.yield.valueChan:
+	case _, ok := <-gen.yield.valueCh:
 		if ok {
-			t.Error("valueChan should be closed after generator completes")
+			t.Error("valueCh should be closed after generator completes")
 		}
 	case <-time.After(10 * time.Millisecond):
-		t.Error("valueChan should be closed immediately")
+		t.Error("valueCh should be closed immediately")
 	}
 }
 
-// TestEmptyGenerator 测试空生成器
 func TestEmptyGenerator(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
-		// 空生成器，不产生任何值
+		// 不产生任何值
 	})
 
 	value, done := gen.Next()
@@ -149,40 +131,79 @@ func TestEmptyGenerator(t *testing.T) {
 		t.Error("Next should return done=true for empty generator")
 	}
 	if value != 0 {
-		t.Errorf("Expected zero value for empty generator, got %d", value)
-	}
-	if !gen.isDone {
-		t.Error("Empty generator should be marked as done")
+		t.Errorf("expected zero value for empty generator, got %d", value)
 	}
 }
 
-// TestConcurrentSafety 测试并发安全关闭
-func TestConcurrentSafety(t *testing.T) {
+func TestStop(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
-		for i := range 5 {
-			yield.Yield(i)
+		for i := 0; ; i++ {
+			if yield.Stopped() {
+				return
+			}
+			yield.Send(i)
 		}
 	})
 
-	var wg sync.WaitGroup
-	wg.Add(3)
-
-	// 并发调用 Next
+	// 消费几个值
 	for i := 0; i < 3; i++ {
-		go func() {
-			defer wg.Done()
-			for {
-				_, done := gen.Next()
-				if done {
-					break
-				}
-				time.Sleep(1 * time.Millisecond) // 模拟并发延迟
-			}
-		}()
+		value, done := gen.Next()
+		if done {
+			t.Fatalf("Next unexpectedly done at iteration %d", i)
+		}
+		if value != i {
+			t.Errorf("expected %d, got %d", i, value)
+		}
 	}
 
-	wg.Wait()
-	if !gen.isDone {
-		t.Error("Generator should be marked as done after concurrent access")
+	gen.Stop()
+
+	// 生成器应很快结束
+	_, done := gen.Next()
+	if !done {
+		t.Error("Next should return done=true after Stop")
+	}
+}
+
+func TestStopDuringSend(t *testing.T) {
+	ready := make(chan struct{})
+	gen := NewGenerator(func(yield Yield[int]) {
+		close(ready)
+		result := yield.Send(42)
+		if result != nil {
+			t.Errorf("Send should return nil when stopped, got %v", result)
+		}
+	})
+
+	<-ready
+	gen.Stop()
+
+	_, done := gen.Next()
+	if !done {
+		t.Error("Next should return done=true after Stop")
+	}
+}
+
+func TestStopMultiple(t *testing.T) {
+	gen := NewGenerator(func(yield Yield[int]) {
+		<-time.After(50 * time.Millisecond)
+	})
+	gen.Stop()
+	gen.Stop() // 不应 panic
+	gen.Stop()
+}
+
+func TestStoppedBeforeSend(t *testing.T) {
+	gen := NewGenerator(func(yield Yield[int]) {
+		if yield.Stopped() {
+			return // 已停止，不发送值
+		}
+		yield.Send(1)
+	})
+
+	gen.Stop()
+	_, done := gen.Next()
+	if !done {
+		t.Error("Next should return done=true")
 	}
 }
