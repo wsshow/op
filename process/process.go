@@ -65,7 +65,7 @@ type Process struct {
 }
 
 // New 创建 Process 实例。
-func New(opts Options) *Process { //nolint:gocritic // Options by value is intentional for API simplicity
+func New(opts Options) *Process {
 	p := &Process{opts: opts}
 	p.state.Store(stateIdle)
 	return p
@@ -86,7 +86,7 @@ func (p *Process) Start() error {
 }
 
 // SetOptions 在进程未运行时替换配置。运行中调用返回错误。
-func (p *Process) SetOptions(opts Options) error { //nolint:gocritic
+func (p *Process) SetOptions(opts Options) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.state.Load() == stateRunning {
@@ -137,7 +137,6 @@ func (p *Process) exec(ctx context.Context) {
 	}
 
 	p.mu.Lock()
-	//nolint:gosec // ExecPath and Args come from library consumer configuration
 	p.cmd = exec.CommandContext(ctx, p.opts.ExecPath, p.opts.Args...)
 	p.cmd.Env = p.opts.Env
 	p.cmd.Dir = p.opts.Dir
@@ -168,10 +167,13 @@ func (p *Process) exec(ctx context.Context) {
 		p.opts.OnBefore(p)
 	}
 
+	p.mu.Lock()
 	if err := p.cmd.Start(); err != nil {
+		p.mu.Unlock()
 		p.addError(fmt.Errorf("start: %w", err))
 		return
 	}
+	p.mu.Unlock()
 
 	if stdout != nil {
 		p.wg.Add(1)

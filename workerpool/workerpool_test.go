@@ -40,8 +40,8 @@ func TestSubmit(t *testing.T) {
 	}
 
 	wg.Wait()
-	if counter != 3 {
-		t.Errorf("Expected 3 tasks to complete, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 3 {
+		t.Errorf("Expected 3 tasks to complete, got %d", c)
 	}
 
 	pool.Submit(nil)                  // 测试空任务
@@ -86,8 +86,8 @@ func TestStop(t *testing.T) {
 	if !pool.Stopped() {
 		t.Error("Pool should be stopped after Stop()")
 	}
-	if counter != 1 {
-		t.Errorf("Only running task should complete, expected counter 1, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 1 {
+		t.Errorf("Only running task should complete, expected counter 1, got %d", c)
 	}
 
 	assertPanics(t, "Submit after Stop should panic", func() {
@@ -118,8 +118,8 @@ func TestStopWait(t *testing.T) {
 	if !pool.Stopped() {
 		t.Error("Pool should be stopped after StopWait()")
 	}
-	if counter != 2 {
-		t.Errorf("All queued tasks should complete, expected counter 2, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 2 {
+		t.Errorf("All queued tasks should complete, expected counter 2, got %d", c)
 	}
 }
 
@@ -145,8 +145,8 @@ func TestWaitingQueueSize(t *testing.T) {
 	if pool.WaitingQueueSize() != 0 {
 		t.Errorf("Waiting queue should be empty after StopWait, got %d", pool.WaitingQueueSize())
 	}
-	if counter != 4 {
-		t.Errorf("All tasks should complete, expected counter 4, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 4 {
+		t.Errorf("All tasks should complete, expected counter 4, got %d", c)
 	}
 }
 
@@ -192,8 +192,8 @@ func TestPause(t *testing.T) {
 	wg.Wait()
 	<-pauseDone                       // 等待 Pause 返回
 	time.Sleep(50 * time.Millisecond) // 等待第三个任务完成
-	if counter != 3 {
-		t.Errorf("All tasks should complete after pause, expected counter 3, got %d", counter)
+	if atomic.LoadInt32(&counter) != 3 {
+		t.Errorf("All tasks should complete after pause, expected counter 3, got %d", atomic.LoadInt32(&counter))
 	}
 }
 
@@ -221,8 +221,8 @@ func TestIdleWorkerShutdown(t *testing.T) {
 		t.Errorf("No tasks should be waiting after idle timeout, got %d", pool.WaitingQueueSize())
 	}
 	pool.StopWait()
-	if counter != 4 {
-		t.Errorf("All tasks should complete, expected counter 4, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 4 {
+		t.Errorf("All tasks should complete, expected counter 4, got %d", c)
 	}
 }
 
@@ -259,8 +259,8 @@ func TestMultiplePause(t *testing.T) {
 	cancel1()                         // 取消第一个 Pause
 	<-pause2Done                      // 等待第二个 Pause 完成
 	time.Sleep(20 * time.Millisecond) // 等待任务执行
-	if counter != 1 {
-		t.Errorf("Task should complete after pauses end, expected counter 1, got %d", counter)
+	if c := atomic.LoadInt32(&counter); c != 1 {
+		t.Errorf("Task should complete after pauses end, expected counter 1, got %d", c)
 	}
 }
 

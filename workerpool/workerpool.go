@@ -138,6 +138,10 @@ func (p *WorkerPool) SubmitWait(task func()) {
 	<-doneChan
 }
 
+func (p *WorkerPool) syncWaitingCount() {
+	p.waitingCount.Store(int32(p.waitingQueue.Size()))
+}
+
 // WaitingQueueSize 返回等待队列中的任务数量。
 func (p *WorkerPool) WaitingQueueSize() int {
 	return int(p.waitingCount.Load())
@@ -252,7 +256,7 @@ func (p *WorkerPool) handleTask(task func(), workerCount *int, wg *sync.WaitGrou
 			*workerCount++
 		} else {
 			p.waitingQueue.PushBack(task)
-			p.waitingCount.Store(int32(p.waitingQueue.Size())) //nolint:gosec // queue size bounded by available memory
+			p.syncWaitingCount()
 		}
 	}
 }
@@ -302,7 +306,7 @@ func (p *WorkerPool) processWaitingQueue() bool {
 	case p.workerChan <- p.waitingQueue.Front():
 		p.waitingQueue.PopFront()
 	}
-	p.waitingCount.Store(int32(p.waitingQueue.Size())) //nolint:gosec // queue size bounded by available memory
+	p.syncWaitingCount()
 	return true
 }
 
@@ -320,6 +324,6 @@ func (p *WorkerPool) killIdleWorker() bool {
 func (p *WorkerPool) runQueuedTasks() {
 	for p.waitingQueue.Size() > 0 {
 		p.workerChan <- p.waitingQueue.PopFront()
-		p.waitingCount.Store(int32(p.waitingQueue.Size())) //nolint:gosec // queue size bounded by available memory
+		p.syncWaitingCount()
 	}
 }

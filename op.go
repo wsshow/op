@@ -121,7 +121,7 @@ func WithPanicHandler(handler func(any)) Option {
 // ---------------------------------------------------------------------------
 
 // NewProcess 创建一个新的进程对象。
-func NewProcess(co Options) *Process { return process.New(co) } //nolint:gocritic
+func NewProcess(co Options) *Process { return process.New(co) }
 
 // NewProcessManager 创建一个新的进程管理器对象。
 func NewProcessManager() *Manager { return process.NewManager() }

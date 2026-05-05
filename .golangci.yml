@@ -49,14 +49,28 @@ linters-settings:
 
 issues:
   exclude-rules:
-    # Test files may use dot imports for gomock
     - path: _test\.go
       linters:
         - gosec
         - errcheck
-    # Exported functions must have comments - handled by review
-    - linters:
-        - golint
-      text: "should have comment"
+    # Process manager must execute external commands (G204)
+    - path: process/
+      linters:
+        - gosec
+      text: "G204"
+    # Waiting queue size bounded by memory, safe int->int32 conversion
+    - path: workerpool/
+      linters:
+        - gosec
+      text: "G115"
+    # Options struct (160 bytes) passed by value is intentional API design
+    - path: process/
+      linters:
+        - gocritic
+      text: "hugeParam"
+    - path: op\.go
+      linters:
+        - gocritic
+      text: "hugeParam"
   max-issues-per-linter: 0
   max-same-issues: 0
