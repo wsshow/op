@@ -118,17 +118,18 @@ func (e *Emitter[E, T]) removeListenerByID(event E, id uint64) {
 	}
 
 	for i, wrapper := range listeners {
-		if wrapper.id == id {
-			lastIdx := len(listeners) - 1
-			listeners[i] = listeners[lastIdx]
-			listeners[lastIdx] = nil
-			e.events[event] = listeners[:lastIdx]
-
-			if lastIdx == 0 {
-				delete(e.events, event)
-			}
-			return
+		if wrapper.id != id {
+			continue
 		}
+		lastIdx := len(listeners) - 1
+		listeners[i] = listeners[lastIdx]
+		listeners[lastIdx] = nil
+		e.events[event] = listeners[:lastIdx]
+
+		if lastIdx == 0 {
+			delete(e.events, event)
+		}
+		return
 	}
 }
 
@@ -305,10 +306,10 @@ func (e *Emitter[E, T]) SetConcurrency(n int) *Emitter[E, T] {
 }
 
 // SetMaxListeners 设置每个事件的最大监听器数量警告阈值，-1 表示无限制
-func (e *Emitter[E, T]) SetMaxListeners(max int) *Emitter[E, T] {
+func (e *Emitter[E, T]) SetMaxListeners(n int) *Emitter[E, T] {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.maxListeners = max
+	e.maxListeners = n
 	return e
 }
 

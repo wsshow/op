@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"unicode/utf8"
 )
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,10 @@ func TestDistinct(t *testing.T) {
 }
 
 func TestDistinctBy(t *testing.T) {
-	type Person struct{ Name string; Age int }
+	type Person struct {
+		Name string
+		Age  int
+	}
 	people := From([]Person{{"Alice", 25}, {"Bob", 30}, {"Alice", 35}})
 	result := DistinctBy(people, func(p Person) string { return p.Name }).Results()
 	if len(result) != 2 {
@@ -216,7 +220,10 @@ func TestOrderByDescending(t *testing.T) {
 }
 
 func TestOrderByThenBy(t *testing.T) {
-	type Person struct{ Name string; Age int }
+	type Person struct {
+		Name string
+		Age  int
+	}
 	people := From([]Person{
 		{"Bob", 30}, {"Alice", 25}, {"Alice", 35}, {"Bob", 20},
 	})
@@ -259,9 +266,9 @@ func TestAverage(t *testing.T) {
 
 func TestMin(t *testing.T) {
 	l := From([]int{3, 1, 2}).WithComparer(func(a, b int) int { return a - b })
-	min, ok := l.Min()
-	if !ok || min != 1 {
-		t.Errorf("Min should return (1, true), got (%d, %v)", min, ok)
+	minVal, ok := l.Min()
+	if !ok || minVal != 1 {
+		t.Errorf("Min should return (1, true), got (%d, %v)", minVal, ok)
 	}
 
 	// 未设置比较函数
@@ -279,9 +286,9 @@ func TestMin(t *testing.T) {
 
 func TestMax(t *testing.T) {
 	l := From([]int{3, 1, 2}).WithComparer(func(a, b int) int { return a - b })
-	max, ok := l.Max()
-	if !ok || max != 3 {
-		t.Errorf("Max should return (3, true), got (%d, %v)", max, ok)
+	maxVal, ok := l.Max()
+	if !ok || maxVal != 3 {
+		t.Errorf("Max should return (3, true), got (%d, %v)", maxVal, ok)
 	}
 
 	// 空序列
@@ -292,7 +299,10 @@ func TestMax(t *testing.T) {
 }
 
 func TestMinBy(t *testing.T) {
-	type item struct{ name string; val int }
+	type item struct {
+		name string
+		val  int
+	}
 	l := From([]item{{"a", 3}, {"b", 1}, {"c", 2}})
 	result, ok := MinBy(l, func(x item) int { return x.val })
 	if !ok || result.name != "b" {
@@ -306,7 +316,10 @@ func TestMinBy(t *testing.T) {
 }
 
 func TestMaxBy(t *testing.T) {
-	type item struct{ name string; val int }
+	type item struct {
+		name string
+		val  int
+	}
 	l := From([]item{{"a", 3}, {"b", 1}, {"c", 2}})
 	result, ok := MaxBy(l, func(x item) int { return x.val })
 	if !ok || result.name != "a" {
@@ -568,7 +581,7 @@ func TestSequenceEqual(t *testing.T) {
 
 func TestGroupBy(t *testing.T) {
 	l := From([]string{"apple", "banana", "apricot"})
-	groups := GroupBy(l, func(s string) rune { return []rune(s)[0] })
+	groups := GroupBy(l, func(s string) rune { r, _ := utf8.DecodeRuneInString(s); return r })
 	if len(groups) != 2 {
 		t.Fatalf("GroupBy should create 2 groups, got %d", len(groups))
 	}
@@ -586,7 +599,10 @@ func TestGroupBy(t *testing.T) {
 
 func TestJoin(t *testing.T) {
 	type Order struct{ ID int }
-	type Customer struct{ OrderID int; Name string }
+	type Customer struct {
+		OrderID int
+		Name    string
+	}
 	outer := From([]Order{{1}, {2}})
 	inner := From([]Customer{{1, "A"}, {2, "B"}})
 	result := Join(outer, inner,
@@ -601,7 +617,10 @@ func TestJoin(t *testing.T) {
 
 func TestLeftJoin(t *testing.T) {
 	type Order struct{ ID int }
-	type Detail struct{ OrderID int; Product string }
+	type Detail struct {
+		OrderID int
+		Product string
+	}
 	outer := From([]Order{{1}, {2}, {3}})
 	inner := From([]Detail{{1, "Apple"}, {2, "Banana"}})
 	result := LeftJoin(outer, inner,
@@ -651,7 +670,10 @@ func TestToSlice(t *testing.T) {
 }
 
 func TestToMap(t *testing.T) {
-	type Person struct{ ID int; Name string }
+	type Person struct {
+		ID   int
+		Name string
+	}
 	people := From([]Person{{1, "Alice"}, {2, "Bob"}})
 	m := ToMap(people, func(p Person) int { return p.ID }, func(p Person) string { return p.Name })
 	if len(m) != 2 || m[1] != "Alice" || m[2] != "Bob" {
@@ -807,7 +829,10 @@ func ExampleFrom() {
 }
 
 func ExampleOrderBy() {
-	type Person struct{ Name string; Age int }
+	type Person struct {
+		Name string
+		Age  int
+	}
 	people := From([]Person{{"Bob", 30}, {"Alice", 25}})
 	sorted := OrderBy(people, func(p Person) int { return p.Age })
 	for _, p := range sorted.Results() {

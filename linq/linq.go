@@ -485,13 +485,13 @@ func MinVal[T cmp.Ordered](l Linq[T]) (T, bool) {
 	if l.err != nil || len(l.data) == 0 {
 		return zero, false
 	}
-	min := l.data[0]
+	result := l.data[0]
 	for i := 1; i < len(l.data); i++ {
-		if l.data[i] < min {
-			min = l.data[i]
+		if l.data[i] < result {
+			result = l.data[i]
 		}
 	}
-	return min, true
+	return result, true
 }
 
 // MaxVal 返回序列中的最大元素，专用于 cmp.Ordered 类型。
@@ -501,13 +501,13 @@ func MaxVal[T cmp.Ordered](l Linq[T]) (T, bool) {
 	if l.err != nil || len(l.data) == 0 {
 		return zero, false
 	}
-	max := l.data[0]
+	result := l.data[0]
 	for i := 1; i < len(l.data); i++ {
-		if l.data[i] > max {
-			max = l.data[i]
+		if l.data[i] > result {
+			result = l.data[i]
 		}
 	}
-	return max, true
+	return result, true
 }
 
 // Aggregate 对序列进行累积运算。

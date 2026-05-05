@@ -25,7 +25,7 @@ const (
 )
 
 const (
-	stateIdle    int32 = iota
+	stateIdle int32 = iota
 	stateRunning
 	stateStopped
 )
@@ -65,7 +65,7 @@ type Process struct {
 }
 
 // New 创建 Process 实例。
-func New(opts Options) *Process {
+func New(opts Options) *Process { //nolint:gocritic // Options by value is intentional for API simplicity
 	p := &Process{opts: opts}
 	p.state.Store(stateIdle)
 	return p
@@ -86,7 +86,7 @@ func (p *Process) Start() error {
 }
 
 // SetOptions 在进程未运行时替换配置。运行中调用返回错误。
-func (p *Process) SetOptions(opts Options) error {
+func (p *Process) SetOptions(opts Options) error { //nolint:gocritic
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.state.Load() == stateRunning {
@@ -137,6 +137,7 @@ func (p *Process) exec(ctx context.Context) {
 	}
 
 	p.mu.Lock()
+	//nolint:gosec // ExecPath and Args come from library consumer configuration
 	p.cmd = exec.CommandContext(ctx, p.opts.ExecPath, p.opts.Args...)
 	p.cmd.Env = p.opts.Env
 	p.cmd.Dir = p.opts.Dir

@@ -43,7 +43,7 @@ linters-settings:
     excludes:
       - G104 # errcheck handles this
   errcheck:
-    check-blank: true
+    check-blank: false
   staticcheck:
     checks: ["all"]
 

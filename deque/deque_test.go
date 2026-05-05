@@ -236,10 +236,10 @@ func TestClear(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		q.PushBack(i)
 	}
-	cap := q.Capacity()
+	capa := q.Capacity()
 	q.Clear()
 	assertEqual(t, q.Size(), 0, "empty queue size not 0 after clear")
-	assertEqual(t, q.Capacity(), cap, "capacity changed after clear")
+	assertEqual(t, q.Capacity(), capa, "capacity changed after clear")
 	assertBufferCleared(t, &q)
 
 	for i := 0; i < 128; i++ {

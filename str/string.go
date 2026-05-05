@@ -79,14 +79,14 @@ func (s *String) RuneLength() int {
 }
 
 // ReplaceAll 替换所有匹配的子串，返回自身以支持链式调用。
-func (s *String) ReplaceAll(old, new string) *String {
-	s.str = strings.ReplaceAll(s.str, old, new)
+func (s *String) ReplaceAll(old, newStr string) *String {
+	s.str = strings.ReplaceAll(s.str, old, newStr)
 	return s
 }
 
 // Replace 替换前 n 个匹配的子串（n < 0 表示替换所有），返回自身。
-func (s *String) Replace(old, new string, n int) *String {
-	s.str = strings.Replace(s.str, old, new, n)
+func (s *String) Replace(old, newStr string, n int) *String {
+	s.str = strings.Replace(s.str, old, newStr, n)
 	return s
 }
 
@@ -218,7 +218,7 @@ func (s *String) Substring(start, end int) *String {
 
 // IsEmpty 检查字符串是否为空。
 func (s *String) IsEmpty() bool {
-	return len(s.str) == 0
+	return s.str == ""
 }
 
 // IsBlank 检查字符串是否为空或仅包含空白字符。

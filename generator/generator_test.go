@@ -105,7 +105,7 @@ func TestGeneratorDone(t *testing.T) {
 		t.Errorf("expected value 1, got %d", value)
 	}
 
-	value, done = gen.Next()
+	_, done = gen.Next()
 	if !done {
 		t.Error("Next should return done=true after generator completes")
 	}

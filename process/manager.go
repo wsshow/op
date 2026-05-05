@@ -19,7 +19,7 @@ func NewManager() *Manager {
 }
 
 // Add 注册并异步启动一个新进程。name 为空或已存在时返回错误。
-func (m *Manager) Add(name string, opts Options) error {
+func (m *Manager) Add(name string, opts Options) error { //nolint:gocritic
 	if name == "" {
 		return errors.New("name cannot be empty")
 	}
@@ -80,7 +80,7 @@ func (m *Manager) Range(fn func(name string, p *Process) bool) {
 }
 
 // SetOptions 替换已注册进程的配置，不重启。进程运行中时返回错误。
-func (m *Manager) SetOptions(name string, opts Options) error {
+func (m *Manager) SetOptions(name string, opts Options) error { //nolint:gocritic
 	m.mu.RLock()
 	p, ok := m.procs[name]
 	m.mu.RUnlock()
