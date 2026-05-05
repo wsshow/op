@@ -225,6 +225,14 @@ func (s *Slice[T]) Sort(less func(a, b T) bool) *Slice[T] {
 	return s
 }
 
+// SortStable 使用稳定排序算法对切片进行原地排序，保持相等元素的相对顺序。
+func (s *Slice[T]) SortStable(less func(a, b T) bool) *Slice[T] {
+	sort.SliceStable(s.data, func(i, j int) bool {
+		return less(s.data[i], s.data[j])
+	})
+	return s
+}
+
 // Reverse 原地反转切片顺序，返回自身。
 func (s *Slice[T]) Reverse() *Slice[T] {
 	for i, j := 0, len(s.data)-1; i < j; i, j = i+1, j-1 {

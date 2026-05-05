@@ -68,24 +68,22 @@ func TestDistinctComparable(t *testing.T) {
 }
 
 func TestDistinct(t *testing.T) {
-	l := From([]string{"a", "A", "b"}).WithComparer(func(a, b string) int {
+	l := From([]string{"b", "A", "a", "B", "c"}).WithComparer(func(a, b string) int {
 		return cmp.Compare(stringsToLower(a), stringsToLower(b))
 	})
 	result := l.Distinct().Results()
-	if len(result) != 2 {
-		t.Errorf("Distinct should return 2 elements, got %d: %v", len(result), result)
+	if len(result) != 3 {
+		t.Errorf("Distinct should return 3 elements, got %d: %v", len(result), result)
 	}
-	hasB, hasA := false, false
-	for _, v := range result {
-		if v == "b" {
-			hasB = true
-		}
-		if v == "a" || v == "A" {
-			hasA = true
-		}
+	// 验证保留首次出现顺序
+	if result[0] != "b" {
+		t.Errorf("Distinct: first element should be 'b' (first occurrence), got %q", result[0])
 	}
-	if !hasB || !hasA {
-		t.Errorf("Distinct should contain 'b' and either 'a' or 'A', got %v", result)
+	if result[1] != "A" {
+		t.Errorf("Distinct: second element should be 'A' (first occurrence), got %q", result[1])
+	}
+	if result[2] != "c" {
+		t.Errorf("Distinct: third element should be 'c', got %q", result[2])
 	}
 
 	// 未设置比较函数时返回错误
@@ -741,6 +739,32 @@ func TestSetOperationsPreserveComparer(t *testing.T) {
 		if l.compare == nil {
 			t.Errorf("%s should preserve l1.compare", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MinVal / MaxVal
+// ---------------------------------------------------------------------------
+
+func TestMinVal(t *testing.T) {
+	v, ok := MinVal(From([]int{3, 1, 4, 1, 5}))
+	if !ok || v != 1 {
+		t.Errorf("MinVal expected 1, got %v (ok=%v)", v, ok)
+	}
+	_, ok = MinVal(Empty[int]())
+	if ok {
+		t.Error("MinVal on empty should return false")
+	}
+}
+
+func TestMaxVal(t *testing.T) {
+	v, ok := MaxVal(From([]float64{1.0, 3.5, 2.2}))
+	if !ok || v != 3.5 {
+		t.Errorf("MaxVal expected 3.5, got %v (ok=%v)", v, ok)
+	}
+	_, ok = MaxVal(Empty[float64]())
+	if ok {
+		t.Error("MaxVal on empty should return false")
 	}
 }
 

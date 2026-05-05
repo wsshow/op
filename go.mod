@@ -1,3 +1,3 @@
 module github.com/wsshow/op
 
-go 1.22
+go 1.23

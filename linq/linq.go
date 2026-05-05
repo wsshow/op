@@ -148,7 +148,7 @@ func (l Linq[T]) Where(predicate func(T) bool) Linq[T] {
 	return Linq[T]{data: result, compare: l.compare}
 }
 
-// Distinct 使用 [Linq.WithComparer] 设置的比较函数移除重复元素（先排序再相邻去重）。
+// Distinct 使用 [Linq.WithComparer] 设置的比较函数移除重复元素，保留首次出现的顺序。
 // 若未设置比较函数，将通过 [Linq.Error] 返回错误。
 // 对于 comparable 类型，推荐使用 [DistinctComparable]；按 key 去重请使用 [DistinctBy]。
 func (l Linq[T]) Distinct() Linq[T] {
@@ -162,18 +162,19 @@ func (l Linq[T]) Distinct() Linq[T] {
 		return Linq[T]{data: l.data, compare: l.compare}
 	}
 
-	data := make([]T, len(l.data))
-	copy(data, l.data)
-	sort.SliceStable(data, func(i, j int) bool {
-		return l.compare(data[i], data[j]) < 0
-	})
-
-	result := make([]T, 0, len(data))
-	result = append(result, data[0])
-	for i := 1; i < len(data); i++ {
-		if l.compare(data[i], data[i-1]) != 0 {
-			result = append(result, data[i])
+	result := make([]T, 0, len(l.data))
+	seen := make([]T, 0, len(l.data))
+	for _, item := range l.data {
+		idx := sort.Search(len(seen), func(i int) bool {
+			return l.compare(seen[i], item) >= 0
+		})
+		if idx < len(seen) && l.compare(seen[idx], item) == 0 {
+			continue
 		}
+		seen = append(seen, item)
+		copy(seen[idx+1:], seen[idx:])
+		seen[idx] = item
+		result = append(result, item)
 	}
 	return Linq[T]{data: result, compare: l.compare}
 }
@@ -469,6 +470,38 @@ func MaxBy[T any, K cmp.Ordered](l Linq[T], keySelector func(T) K) (T, bool) {
 		}
 	}
 	return l.data[maxIdx], true
+}
+
+// MinVal 返回序列中的最小元素，专用于 cmp.Ordered 类型。
+// 空序列或存在错误时返回 (零值, false)。
+func MinVal[T cmp.Ordered](l Linq[T]) (T, bool) {
+	var zero T
+	if l.err != nil || len(l.data) == 0 {
+		return zero, false
+	}
+	min := l.data[0]
+	for i := 1; i < len(l.data); i++ {
+		if l.data[i] < min {
+			min = l.data[i]
+		}
+	}
+	return min, true
+}
+
+// MaxVal 返回序列中的最大元素，专用于 cmp.Ordered 类型。
+// 空序列或存在错误时返回 (零值, false)。
+func MaxVal[T cmp.Ordered](l Linq[T]) (T, bool) {
+	var zero T
+	if l.err != nil || len(l.data) == 0 {
+		return zero, false
+	}
+	max := l.data[0]
+	for i := 1; i < len(l.data); i++ {
+		if l.data[i] > max {
+			max = l.data[i]
+		}
+	}
+	return max, true
 }
 
 // Aggregate 对序列进行累积运算。

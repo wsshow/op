@@ -693,3 +693,25 @@ func TestMemoryLeakRemove(t *testing.T) {
 		t.Error("Remove should clear the reference at the vacated position")
 	}
 }
+
+func TestSortStable(t *testing.T) {
+	type pair struct{ key, val int }
+	s := New[pair]()
+	s.Push(pair{2, 200}, pair{1, 100}, pair{2, 201}, pair{1, 101}, pair{3, 300})
+	s.SortStable(func(a, b pair) bool { return a.key < b.key })
+	raw := s.Raw()
+	for i := 1; i < len(raw); i++ {
+		if raw[i-1].key > raw[i].key {
+			t.Errorf("SortStable: elements not sorted at index %d: %v > %v", i, raw[i-1], raw[i])
+		}
+	}
+	var vals []int
+	for _, p := range raw {
+		if p.key == 2 {
+			vals = append(vals, p.val)
+		}
+	}
+	if len(vals) != 2 || vals[0] != 200 || vals[1] != 201 {
+		t.Errorf("SortStable: expected [200, 201] (stable), got %v", vals)
+	}
+}

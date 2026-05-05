@@ -205,6 +205,18 @@ func (s *String) IsBlank() bool {
 	return strings.TrimSpace(s.str) == ""
 }
 
+// Repeat 将字符串重复 count 次，返回自身。
+// count <= 0 时变为空字符串。
+func (s *String) Repeat(count int) *String {
+	s.str = strings.Repeat(s.str, count)
+	return s
+}
+
+// Join 使用 sep 连接字符串切片，返回新实例。
+func Join(elems []string, sep string) *String {
+	return New(strings.Join(elems, sep))
+}
+
 // Clone 创建字符串的副本，返回新实例。
 func (s *String) Clone() *String {
 	return New(s.str)

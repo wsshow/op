@@ -27,8 +27,13 @@ type Deque[T any] struct {
 }
 
 // New 创建并返回一个新的双端队列实例。
-func New[T any]() *Deque[T] {
-	return &Deque[T]{baseCap: minCapacity}
+// 可选 capacity 参数设置初始基础容量。
+func New[T any](capacity ...int) *Deque[T] {
+	d := &Deque[T]{baseCap: minCapacity}
+	if len(capacity) > 0 && capacity[0] > 0 {
+		d.SetBaseCap(capacity[0])
+	}
+	return d
 }
 
 // Capacity 返回当前缓冲区的容量。若队列为 nil 则返回 0。

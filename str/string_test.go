@@ -383,6 +383,33 @@ func TestChaining(t *testing.T) {
 	}
 }
 
+func TestRepeat(t *testing.T) {
+	s := New("ab")
+	result := s.Repeat(3)
+	if result.String() != "ababab" {
+		t.Errorf("Repeat: expected 'ababab', got '%s'", result.String())
+	}
+	s2 := New("x").Repeat(0)
+	if s2.String() != "" {
+		t.Errorf("Repeat(0): expected '', got '%s'", s2.String())
+	}
+}
+
+func TestJoin(t *testing.T) {
+	s := Join([]string{"a", "b", "c"}, "-")
+	if s.String() != "a-b-c" {
+		t.Errorf("Join: expected 'a-b-c', got '%s'", s.String())
+	}
+	s2 := Join([]string{}, "-")
+	if s2.String() != "" {
+		t.Errorf("Join empty: expected '', got '%s'", s2.String())
+	}
+	s3 := Join([]string{"hello"}, ", ")
+	if s3.String() != "hello" {
+		t.Errorf("Join single: expected 'hello', got '%s'", s3.String())
+	}
+}
+
 func TestChainingWithConcatAndSubstring(t *testing.T) {
 	s := New("hello world")
 	// Concat returns new, so chain on the result

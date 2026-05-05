@@ -125,7 +125,7 @@ uniqueUsers := linq.DistinctBy(linq.From(users), func(u User) int { return u.ID 
 // [{1 Alice} {2 Bob}] — keeps first occurrence per key
 
 // Custom comparison (case-insensitive, non-comparable structs, etc.)
-uniqueCase := linq.From([]string{"a", "A", "b"}).
+uniqueCase := linq.From([]string{"b", "A", "a", "c"}).
     WithComparer(func(a, b string) int {
         return cmp.Compare(strings.ToLower(a), strings.ToLower(b))
     }).
@@ -143,6 +143,10 @@ count := data.Count()                         // 5
 evenCount := data.CountBy(func(x int) bool { return x%2 == 0 }) // 2
 sum := linq.Sum(data)                         // 15
 avg := linq.Average(linq.From([]float64{1, 2, 3})) // 2.0
+
+	// MinVal / MaxVal -- for cmp.Ordered types, returns (value, bool)
+	minVal, ok := linq.MinVal(data) // 1, true
+	maxVal, ok := linq.MaxVal(data) // 5, true
 
 // Min / Max — requires WithComparer, returns (value, error)
 nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(func(a, b int) int { return a - b })

@@ -105,7 +105,9 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/wsshow/op"
+	"github.com/wsshow/op/generator"
 )
 
 func main() {
@@ -118,17 +120,28 @@ func main() {
 	fmt.Println(sl.Data()) // [1 2 3]
 
 	// 创建事件发射器
-	em := op.NewEmitter[string]()
-	em.On("event", func(args ...string) {
-		fmt.Println("事件:", args)
+	em := op.NewEmitter[string, int]()
+	em.On("event", func(v int) {
+		fmt.Println("事件:", v)
 	})
-	em.Emit("event", "测试") // 事件: [测试]
+	em.Emit("event", 42) // 事件: 42
 
-	// 创建双端队列
-	d := op.NewDeque[int]()
+	// LINQ 风格查询
+	l := op.LinqFrom([]int{1, 2, 3, 4})
+	fmt.Println(l.Where(func(x int) bool { return x > 2 }).Results()) // [3, 4]
+
+	// 创建双端队列（支持可选初始容量）
+	d := op.NewDeque[int](64)
 	d.PushBack(1)
 	d.PushFront(0)
 	fmt.Println(d.PopFront()) // 0
+
+	// 创建生成器
+	g := op.NewGenerator(func(yield generator.Yield[int]) {
+		for i := 0; i < 3; i++ {
+			yield.Send(i)
+		}
+	})
 
 	// 创建工作池
 	wp := op.NewWorkerPool(4)

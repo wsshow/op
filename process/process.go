@@ -30,6 +30,9 @@ const (
 type Options struct {
 	ExecPath    string               // 可执行文件路径
 	Args        []string             // 命令行参数
+	Env         []string             // 环境变量，nil 时继承父进程环境
+	Dir         string               // 工作目录，空字符串使用当前目录
+	Stdin       io.Reader            // 标准输入，nil 时进程从 /dev/null 读取
 	Context     context.Context      // 父上下文，nil 时使用 context.Background
 	OnBefore    func(*Process)       // 启动前回调
 	OnAfter     func(*Process)       // 退出后回调（无论成功与否）
@@ -131,6 +134,9 @@ func (p *Process) exec(ctx context.Context) {
 
 	p.mu.Lock()
 	p.cmd = exec.CommandContext(ctx, p.opts.ExecPath, p.opts.Args...)
+	p.cmd.Env = p.opts.Env
+	p.cmd.Dir = p.opts.Dir
+	p.cmd.Stdin = p.opts.Stdin
 	p.cmd.SysProcAttr = p.opts.SysProcAttr
 	p.mu.Unlock()
 

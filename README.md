@@ -105,7 +105,9 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/wsshow/op"
+	"github.com/wsshow/op/generator"
 )
 
 func main() {
@@ -118,17 +120,28 @@ func main() {
 	fmt.Println(sl.Data()) // [1 2 3]
 
 	// Create an event emitter
-	em := op.NewEmitter[string]()
-	em.On("event", func(args ...string) {
-		fmt.Println("Event:", args)
+	em := op.NewEmitter[string, int]()
+	em.On("event", func(v int) {
+		fmt.Println("Event:", v)
 	})
-	em.Emit("event", "test") // Event: [test]
+	em.Emit("event", 42) // Event: 42
 
-	// Create a deque
-	d := op.NewDeque[int]()
+	// LINQ-style queries
+	l := op.LinqFrom([]int{1, 2, 3, 4})
+	fmt.Println(l.Where(func(x int) bool { return x > 2 }).Results()) // [3, 4]
+
+	// Create a deque (with optional capacity)
+	d := op.NewDeque[int](64)
 	d.PushBack(1)
 	d.PushFront(0)
 	fmt.Println(d.PopFront()) // 0
+
+	// Create a generator
+	g := op.NewGenerator(func(yield generator.Yield[int]) {
+		for i := 0; i < 3; i++ {
+			yield.Send(i)
+		}
+	})
 
 	// Create a worker pool
 	wp := op.NewWorkerPool(4)
