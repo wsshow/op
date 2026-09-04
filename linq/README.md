@@ -131,7 +131,7 @@ uniqueCase := linq.From([]string{"b", "A", "a", "c"}).
     }).
     Distinct().
     Results()
-// ["a" "b"] (or ["A" "b"])
+// ["b" "A" "c"] — preserves the first occurrence from the input
 ```
 
 ### Aggregation
@@ -144,12 +144,12 @@ evenCount := data.CountBy(func(x int) bool { return x%2 == 0 }) // 2
 sum := linq.Sum(data)                         // 15
 avg := linq.Average(linq.From([]float64{1, 2, 3})) // 2.0
 
-	// MinVal / MaxVal -- for cmp.Ordered types, returns (value, bool)
-	minVal, ok := linq.MinVal(data) // 1, true
-	maxVal, ok := linq.MaxVal(data) // 5, true
+// MinVal / MaxVal -- for cmp.Ordered types, returns (value, bool)
+minVal, ok := linq.MinVal(data) // 1, true
+maxVal, ok := linq.MaxVal(data) // 5, true
 
 // Min / Max — requires WithComparer, returns (value, bool)
-nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(func(a, b int) int { return a - b })
+nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(cmp.Compare[int])
 min, ok := nums.Min() // 1, true
 max, ok := nums.Max() // 8, true
 

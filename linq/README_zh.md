@@ -131,7 +131,7 @@ uniqueCase := linq.From([]string{"a", "A", "b"}).
     }).
     Distinct().
     Results()
-// ["a" "b"]（或 ["A" "b"]）
+// ["a" "b"]——按输入顺序保留首次出现的元素
 ```
 
 ### 聚合
@@ -145,7 +145,7 @@ sum := linq.Sum(data)                                      // 15
 avg := linq.Average(linq.From([]float64{1, 2, 3})) // 2.0
 
 // 最小值 / 最大值——需 WithComparer，返回 (值, bool)
-nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(func(a, b int) int { return a - b })
+nums := linq.From([]int{5, 2, 8, 1, 3}).WithComparer(cmp.Compare[int])
 min, ok := nums.Min() // 1, true
 max, ok := nums.Max() // 8, true
 
