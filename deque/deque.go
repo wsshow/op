@@ -4,18 +4,26 @@
 // 非并发安全。
 package deque
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+)
 
 // minCapacity 是双端队列的最小容量，必须是 2 的幂以支持位运算取模。
 const minCapacity = 16
 
+// maxCapacity 是 int 能表示的最大 2 的幂。环形索引要求容量保持为 2 的幂。
+const maxCapacity = 1 << (bits.UintSize - 2)
+
 // ceilPowerOfTwo 返回不小于 n 的最小 2 的幂，且不低于 minCapacity。
 func ceilPowerOfTwo(n int) int {
-	c := minCapacity
-	for c < n {
-		c <<= 1
+	if n <= minCapacity {
+		return minCapacity
 	}
-	return c
+	if n > maxCapacity {
+		panic("deque: capacity overflow")
+	}
+	return 1 << bits.Len(uint(n-1))
 }
 
 // Deque 是一个基于环形缓冲区的双端队列，支持泛型类型 T。
@@ -335,14 +343,17 @@ func (d *Deque[T]) ensureCapacity() {
 	if d.buffer == nil {
 		d.buffer = make([]T, ceilPowerOfTwo(d.baseCap))
 	} else if d.size == len(d.buffer) {
-		d.resize(max(d.size<<1, minCapacity))
+		if d.size > maxCapacity/2 {
+			panic("deque: capacity overflow")
+		}
+		d.resize(d.size << 1)
 	}
 }
 
 // shrinkIfNeeded 在队列占用低于缓冲区容量的 1/4 时缩减容量。
 // 缩容后的容量不低于 max(baseCap, minCapacity)。
 func (d *Deque[T]) shrinkIfNeeded() {
-	if len(d.buffer) > d.baseCap && (d.size<<2) <= len(d.buffer) {
+	if len(d.buffer) > d.baseCap && d.size <= len(d.buffer)/4 {
 		newCap := max(d.size<<1, d.baseCap)
 		if newCap < minCapacity {
 			newCap = minCapacity
@@ -372,6 +383,9 @@ func (d *Deque[T]) resize(newSize int) {
 
 // calculateNewCapacity 计算容纳 n 个额外元素所需的最小 2 的幂容量。
 func (d *Deque[T]) calculateNewCapacity(n int) int {
+	if n > int(^uint(0)>>1)-d.size {
+		panic("deque: capacity overflow")
+	}
 	return ceilPowerOfTwo(max(d.Capacity(), d.size+n))
 }
 

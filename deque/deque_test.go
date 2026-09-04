@@ -152,6 +152,7 @@ func TestBack(t *testing.T) {
 func TestGrow(t *testing.T) {
 	var q Deque[int]
 	assertPanics(t, "should panic with negative size", func() { q.Grow(-1) })
+	assertPanics(t, "should panic when capacity overflows", func() { q.Grow(int(^uint(0) >> 1)) })
 
 	testGrowCapacity(t, &q, 35, 64)
 	testGrowCapacity(t, &q, 55, 64)
