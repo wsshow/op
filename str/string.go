@@ -138,7 +138,12 @@ func (s *String) Reverse() *String {
 
 // Concat 将当前字符串与传入字符串连接，返回新实例。
 func (s *String) Concat(ss ...string) *String {
+	total := len(s.str)
+	for _, st := range ss {
+		total += len(st)
+	}
 	var builder strings.Builder
+	builder.Grow(total)
 	builder.WriteString(s.str)
 	for _, st := range ss {
 		builder.WriteString(st)
