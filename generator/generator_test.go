@@ -225,6 +225,48 @@ func TestStopConcurrent(t *testing.T) {
 	}
 }
 
+func TestConcurrentStopUnblocksConsumerAndGenerator(t *testing.T) {
+	started := make(chan struct{})
+	gen := NewGenerator(func(yield Yield[int]) {
+		close(started)
+		for !yield.Stopped() {
+			yield.Send(1)
+		}
+	})
+	<-started
+
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		for {
+			if _, done := gen.Next(); done {
+				return
+			}
+		}
+	}()
+
+	var stops sync.WaitGroup
+	for range 100 {
+		stops.Add(1)
+		go func() {
+			defer stops.Done()
+			gen.Stop()
+		}()
+	}
+	stops.Wait()
+
+	select {
+	case <-consumerDone:
+	case <-time.After(time.Second):
+		t.Fatal("consumer remained blocked after concurrent Stop calls")
+	}
+	select {
+	case <-gen.closeCh:
+	case <-time.After(time.Second):
+		t.Fatal("generator remained blocked after concurrent Stop calls")
+	}
+}
+
 func TestStoppedBeforeSend(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
 		if yield.Stopped() {
