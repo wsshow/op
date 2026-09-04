@@ -715,6 +715,24 @@ func TestContextCancellation(t *testing.T) {
 	}
 }
 
+func TestContextDeadlineExceeded(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	p := New(Options{
+		ExecPath: os.Args[0],
+		Args:     []string{"-test.run=TestHelperProcess", "--", "sleep", "60"},
+		Context:  ctx,
+	})
+
+	err := p.Run()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v, want context.DeadlineExceeded", err)
+	}
+	if !errors.Is(p.Error(), context.DeadlineExceeded) {
+		t.Fatalf("Error() = %v, want context.DeadlineExceeded", p.Error())
+	}
+}
+
 func TestContextCancelledBeforeStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
