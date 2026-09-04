@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -123,6 +124,45 @@ func TestStopWait(t *testing.T) {
 	}
 }
 
+func TestSubmitWaitReturnsWhenStopDropsQueuedTask(t *testing.T) {
+	pool := New(1)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	pool.Submit(func() {
+		close(started)
+		<-release
+	})
+	<-started
+
+	submitReturned := make(chan struct{})
+	go func() {
+		pool.SubmitWait(func() { t.Error("queued task should have been dropped") })
+		close(submitReturned)
+	}()
+	waitForQueueSize(t, pool, 1)
+
+	stopReturned := make(chan struct{})
+	go func() {
+		pool.Stop()
+		close(stopReturned)
+	}()
+	for !pool.Stopped() {
+		runtime.Gosched()
+	}
+	close(release)
+
+	select {
+	case <-stopReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not return")
+	}
+	select {
+	case <-submitReturned:
+	case <-time.After(time.Second):
+		t.Fatal("SubmitWait remained blocked after its queued task was dropped")
+	}
+}
+
 // TestWaitingQueueSize 测试等待队列大小
 func TestWaitingQueueSize(t *testing.T) {
 	pool := New(1)
@@ -194,6 +234,60 @@ func TestPause(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // 等待第三个任务完成
 	if atomic.LoadInt32(&counter) != 3 {
 		t.Errorf("All tasks should complete after pause, expected counter 3, got %d", atomic.LoadInt32(&counter))
+	}
+}
+
+func TestStopInterruptsPause(t *testing.T) {
+	pool := New(2)
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	for range 2 {
+		pool.Submit(func() {
+			started <- struct{}{}
+			<-release
+		})
+	}
+	for range 2 {
+		<-started
+	}
+
+	pauseReturned := make(chan struct{})
+	go func() {
+		pool.Pause(context.Background())
+		close(pauseReturned)
+	}()
+	waitForQueueSize(t, pool, 2)
+
+	stopReturned := make(chan struct{})
+	go func() {
+		pool.Stop()
+		close(stopReturned)
+	}()
+	for !pool.Stopped() {
+		runtime.Gosched()
+	}
+	close(release)
+
+	select {
+	case <-pauseReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Pause did not return after Stop")
+	}
+	select {
+	case <-stopReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Stop deadlocked with Pause")
+	}
+}
+
+func waitForQueueSize(t *testing.T, pool *WorkerPool, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for pool.WaitingQueueSize() != want {
+		if time.Now().After(deadline) {
+			t.Fatalf("waiting queue size = %d, want %d", pool.WaitingQueueSize(), want)
+		}
+		runtime.Gosched()
 	}
 }
 

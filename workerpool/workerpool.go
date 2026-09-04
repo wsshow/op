@@ -119,9 +119,10 @@ func (p *WorkerPool) Stopped() bool {
 // 则新任务将加入等待队列。Submit 会阻塞直到调度器接收任务。
 // task 为 nil 时将被忽略。协程池停止后调用将触发 panic。
 func (p *WorkerPool) Submit(task func()) {
-	if task != nil {
-		p.taskChan <- task
+	if task == nil {
+		return
 	}
+	p.submit(task, true)
 }
 
 // SubmitWait 将任务提交到协程池并阻塞等待其执行完成。
@@ -131,11 +132,30 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		return
 	}
 	doneChan := make(chan struct{})
-	p.taskChan <- func() {
+	p.submit(func() {
 		defer close(doneChan)
 		task()
+	}, true)
+	select {
+	case <-doneChan:
+	case <-p.stoppedChan:
+		// Stop 会丢弃等待队列。任务若已开始，Stop 会等待它结束，因而
+		// doneChan 总会先关闭；走到这里表示任务未执行。
 	}
-	<-doneChan
+}
+
+// submit 在任务通道和停止信号之间仲裁。任务通道永不关闭，从而避免 Submit
+// 与 Stop 并发时发生 send/close panic；公开提交在停止后仍按既有契约 panic。
+func (p *WorkerPool) submit(task func(), panicIfStopped bool) bool {
+	select {
+	case p.taskChan <- task:
+		return true
+	case <-p.stopSignal:
+		if panicIfStopped {
+			panic("workerpool: submit on stopped pool")
+		}
+		return false
+	}
 }
 
 func (p *WorkerPool) syncWaitingCount() {
@@ -163,26 +183,41 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	}
 	p.stopMutex.Unlock()
 
-	// 提交占位任务以阻塞所有 worker
-	readyWG := new(sync.WaitGroup)
-	doneWG := new(sync.WaitGroup)
-	readyWG.Add(p.maxWorkers)
-	doneWG.Add(p.maxWorkers)
-
-	for i := 0; i < p.maxWorkers; i++ {
-		p.Submit(func() {
-			readyWG.Done()
-			defer doneWG.Done()
+	// 提交占位任务以阻塞所有 worker。使用带缓冲的通知通道，使停止和
+	// context 取消都能中断等待，即使部分占位任务仍在等待队列中。
+	ready := make(chan struct{}, p.maxWorkers)
+	done := make(chan struct{}, p.maxWorkers)
+	submitted := 0
+	for ; submitted < p.maxWorkers; submitted++ {
+		if !p.submit(func() {
+			ready <- struct{}{}
+			defer func() { done <- struct{}{} }()
 			select {
 			case <-ctx.Done():
 			case <-p.stopSignal:
 			}
-		})
+		}, false) {
+			return
+		}
 	}
 
-	readyWG.Wait() // 等待所有暂停任务开始执行
-	<-ctx.Done()   // 等待 context 取消
-	doneWG.Wait()  // 等待所有暂停任务完成
+	for range submitted {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return
+		case <-p.stopSignal:
+			return
+		}
+	}
+	select {
+	case <-ctx.Done():
+	case <-p.stopSignal:
+		return
+	}
+	for range submitted {
+		<-done
+	}
 }
 
 // dispatch 是任务分发器的主循环，运行在独立的 goroutine 中。
@@ -208,10 +243,7 @@ dispatchLoop:
 		}
 
 		select {
-		case task, ok := <-p.taskChan:
-			if !ok {
-				break dispatchLoop
-			}
+		case task := <-p.taskChan:
 			p.handleTask(task, &workerCount, &wg)
 			idle = false
 			// 收到新任务后重置空闲计时器，确保超时时间一致
@@ -230,6 +262,8 @@ dispatchLoop:
 			}
 			idle = true
 			timeout.Reset(p.idleTimeout)
+		case <-p.stopSignal:
+			break dispatchLoop
 		}
 	}
 
@@ -284,12 +318,11 @@ func worker(task func(), workerChan chan func(), wg *sync.WaitGroup, panicHandle
 // stop 执行协程池的停止操作。wait 为 true 时等待所有排队任务完成。
 func (p *WorkerPool) stop(wait bool) {
 	p.stopOnce.Do(func() {
-		close(p.stopSignal)
 		p.stopMutex.Lock()
 		p.isStopped = true
 		p.waitAll = wait
+		close(p.stopSignal)
 		p.stopMutex.Unlock()
-		close(p.taskChan)
 	})
 	<-p.stoppedChan
 }
@@ -298,13 +331,12 @@ func (p *WorkerPool) stop(wait bool) {
 // 返回 false 表示任务通道已关闭，协程池应停止。
 func (p *WorkerPool) processWaitingQueue() bool {
 	select {
-	case task, ok := <-p.taskChan:
-		if !ok {
-			return false
-		}
+	case task := <-p.taskChan:
 		p.waitingQueue.PushBack(task)
 	case p.workerChan <- p.waitingQueue.Front():
 		p.waitingQueue.PopFront()
+	case <-p.stopSignal:
+		return false
 	}
 	p.syncWaitingCount()
 	return true
