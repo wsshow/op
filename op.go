@@ -1,5 +1,5 @@
 // Package op 是工具库的统一入口，重导出各子包的核心类型与构造函数。
-// 导入本包后无需单独导入子包即可使用全部功能。
+// 泛型自由函数（例如 linq.Sum 和 slice.MapTo）仍由对应子包提供。
 package op
 
 import (
