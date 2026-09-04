@@ -281,6 +281,19 @@ func TestAverage(t *testing.T) {
 	}
 }
 
+func TestNumericAggregatesShortCircuitErrors(t *testing.T) {
+	errLinq := From([]int{1, 2, 3}).Distinct()
+	if errLinq.Error() == nil {
+		t.Fatal("expected Distinct error")
+	}
+	if got := Sum(errLinq); got != 0 {
+		t.Fatalf("Sum on errored sequence = %d, want 0", got)
+	}
+	if got := Average(errLinq); got != 0 {
+		t.Fatalf("Average on errored sequence = %v, want 0", got)
+	}
+}
+
 func TestMin(t *testing.T) {
 	l := From([]int{3, 1, 2}).WithComparer(func(a, b int) int { return a - b })
 	minVal, ok := l.Min()

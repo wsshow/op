@@ -397,9 +397,12 @@ func (l Linq[T]) CountBy(predicate func(T) bool) int {
 	return count
 }
 
-// Sum 计算数值序列的总和。
+// Sum 计算数值序列的总和。序列存在错误时返回零值。
 func Sum[T Numeric](l Linq[T]) T {
 	var sum T
+	if l.err != nil {
+		return sum
+	}
 	for _, item := range l.data {
 		sum += item
 	}
@@ -408,9 +411,9 @@ func Sum[T Numeric](l Linq[T]) T {
 
 // Average 计算数值序列的平均值，返回 float64。
 // 对于 int64/uint64 等大整数类型，float64 转换可能丢失精度。
-// 空序列返回 0。
+// 空序列或存在错误时返回 0。
 func Average[T Numeric](l Linq[T]) float64 {
-	if len(l.data) == 0 {
+	if l.err != nil || len(l.data) == 0 {
 		return 0
 	}
 	return float64(Sum(l)) / float64(len(l.data))
