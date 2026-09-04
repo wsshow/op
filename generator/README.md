@@ -6,7 +6,7 @@ English | [简体中文](README_zh.md)
 
 ### Features
 
-- **Generic**: Works with any type using Go generics (Go 1.18+).
+- **Generic**: Works with any type using Go generics (Go 1.24+ module requirement).
 - **Bidirectional**: `Send` yields a value and optionally receives a result from the caller.
 - **Early Termination**: `Stop` signals the generator to stop, preventing goroutine leaks.
 - **Simple Iteration**: `Next` fetches values until the generator is done.

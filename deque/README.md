@@ -6,8 +6,8 @@ English | [简体中文](README_zh.md)
 
 ## Features
 
-- **Generic Support**: Works with any type (Go 1.18+).
-- **Efficient Operations**: Adding and removing elements at both ends has O(1) time complexity.
+- **Generic Support**: Works with any type (Go 1.24+ module requirement).
+- **Efficient Operations**: Adding and removing elements at both ends has amortized O(1) time complexity.
 - **Dynamic Resizing**: Capacity expands or shrinks as needed, always maintaining a power of 2.
 - **Rich Functionality**: Includes rotation, searching, insertion, and removal operations.
 - **Safety Design**: Operations on an empty queue or invalid indices trigger a panic.

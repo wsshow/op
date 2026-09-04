@@ -319,7 +319,7 @@ func (s *Slice[T]) Clear() *Slice[T] {
 	return s
 }
 
-// Clone 创建切片的深拷贝。
+// Clone 复制切片存储；T 内部的指针、切片等引用值仍然共享。
 func (s *Slice[T]) Clone() *Slice[T] {
 	result := &Slice[T]{data: make([]T, len(s.data))}
 	copy(result.data, s.data)

@@ -6,7 +6,7 @@
 
 ## 特性
 
-- **泛型支持**: 使用 Go 泛型（Go 1.18+）支持任意类型
+- **泛型支持**: 使用 Go 泛型（模块要求 Go 1.24+）支持任意类型
 - **链式 API**: 大多数方法返回 `*Slice[T]` 以支持方法链
 - **丰富操作**: Push、pop、shift、unshift、insert、remove、filter、map、reduce、sort 等
 - **熟悉的语法**: API 受 JavaScript 数组启发，易于上手
@@ -347,7 +347,7 @@ expensive.ForEach(func(p Product) {
 | `Filter(predicate func(T) bool) *Slice[T]` | 过滤元素 |
 | `Concat(others ...*Slice[T]) *Slice[T]` | 连接多个切片 |
 | `Sub(start, end int) *Slice[T]` | 获取子切片 |
-| `Clone() *Slice[T]` | 创建深拷贝 |
+| `Clone() *Slice[T]` | 复制切片存储（引用类型元素仍共享） |
 
 ### 包级函数
 

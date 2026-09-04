@@ -6,7 +6,7 @@ English | [简体中文](README_zh.md)
 
 ## Features
 
-- **Generic** — Works with any type (Go 1.22+).
+- **Generic** — Works with any type (Go 1.24+ module requirement).
 - **Chainable** — Method chaining for expressive query pipelines.
 - **Rich operations** — Filter, project, sort, group, join, aggregate, and more.
 - **Type-safe projection** — `SelectT` maps between different types.

@@ -6,7 +6,7 @@ English | [简体中文](README_zh.md)
 
 ## Features
 
-- **Generic Support**: Works with any type using Go generics (Go 1.18+).
+- **Generic Support**: Works with any type using Go generics (Go 1.24+ module requirement).
 - **Chainable API**: Most methods return `*Slice[T]` for method chaining.
 - **Rich Operations**: Push, pop, shift, unshift, insert, remove, filter, map, reduce, sort, and more.
 - **Familiar Syntax**: API inspired by JavaScript arrays for easy adoption.
@@ -347,7 +347,7 @@ expensive.ForEach(func(p Product) {
 | `Filter(predicate func(T) bool) *Slice[T]` | Filter elements |
 | `Concat(others ...*Slice[T]) *Slice[T]` | Concatenate slices |
 | `Sub(start, end int) *Slice[T]` | Get sub-slice |
-| `Clone() *Slice[T]` | Create a deep copy |
+| `Clone() *Slice[T]` | Copy the slice storage (referenced values remain shared) |
 
 ### Package-Level Functions
 

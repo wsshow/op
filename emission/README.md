@@ -7,7 +7,7 @@ English | [简体中文](README_zh.md)
 ## Features
 
 - **Dual-Generic Design**: Complete separation of event identifier and listener parameter types
-- **Type Safety**: Compile-time type checking with Go generics (Go 1.18+)
+- **Type Safety**: Compile-time type checking with Go generics (Go 1.24+ module requirement)
 - **Async & Sync**: `Emit` (fire-and-forget), `EmitWait` (concurrent with wait), and `EmitSync` (sequential)
 - **Once Listeners**: One-time event listeners that auto-remove after first trigger
 - **Panic Recovery**: Always-on panic recovery — custom handler or built-in logging

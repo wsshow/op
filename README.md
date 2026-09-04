@@ -1,6 +1,6 @@
 # OP - A Collection of Go Utility Packages
 
-[![Go Version](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 English | [简体中文](README_zh.md)
@@ -9,7 +9,7 @@ English | [简体中文](README_zh.md)
 
 ## Features
 
-- **High Performance**: Optimized implementations — O(1) deque operations, ring-buffer backing, zero-allocation paths where possible.
+- **High Performance**: Optimized implementations — amortized O(1) deque end operations, ring-buffer backing, and allocation-conscious hot paths.
 - **Generic Support**: Full support for Go generics with type-safe APIs across all collection and utility packages.
 - **Modular Design**: Each sub-package is self-contained and can be used independently or through the unified entry point.
 - **Clean API**: Consistent patterns — method chaining, safe variants (`Try*`/`Peek*`), and idiomatic error handling.
@@ -19,7 +19,7 @@ English | [简体中文](README_zh.md)
 
 ### deque - Double-Ended Queue
 
-A high-performance generic deque backed by a ring buffer. All head and tail operations are O(1). The buffer auto-expands on push and shrinks when sparsely populated. Supports random access, rotation, insertion, and predicate-based search.
+A high-performance generic deque backed by a ring buffer. Head and tail operations are amortized O(1), including occasional resizing. The buffer auto-expands on push and shrinks when sparsely populated. Supports random access, rotation, insertion, and predicate-based search.
 
 ```go
 d := op.NewDeque[int](64)       // pre-allocate ring buffer capacity
@@ -82,7 +82,7 @@ em.SetConcurrency(4)
 
 ### linq - LINQ-Style Queries
 
-A chainable query API for Go slices inspired by .NET LINQ. Provides filtering, projection, sorting, grouping, aggregation, set operations, and joins — all with lazy evaluation where applicable. Over 40 operations spanning element access, partitioning, and conversion. `Linq` is a value type; most chain methods return copies.
+A chainable query API for Go slices inspired by .NET LINQ. Provides filtering, projection, sorting, grouping, aggregation, set operations, and joins. Operations evaluate eagerly. `Linq` is a value type; most chain methods return new values.
 
 ```go
 import (
