@@ -28,9 +28,10 @@ Here are some basic usage examples:
 package main
 
 import (
-	"context"
+    "context"
     "fmt"
     "time"
+
     "github.com/wsshow/op/workerpool"
 )
 
@@ -69,7 +70,7 @@ func main() {
 
 ### Creation and Initialization
 
-- `New(maxWorkers int) *WorkerPool`: Creates a new worker pool with the specified maximum number of concurrent workers.
+- `New(maxWorkers int, opts ...Option) *WorkerPool`: Creates a new worker pool with the specified maximum number of concurrent workers. Values below 1 are normalized to 1.
 
 ### Basic Operations
 
@@ -83,13 +84,18 @@ func main() {
 - `Stop()`: Stops the worker pool, completing only currently running tasks and abandoning pending ones.
 - `StopWait()`: Stops the worker pool and waits for all queued tasks to complete.
 - `Stopped() bool`: Returns whether the worker pool has been stopped.
-- `Pause(ctx context.Context)`: Pauses all workers until the Context is canceled or times out.
+- `Pause(ctx context.Context)`: Pauses all workers until the context is canceled or times out. Concurrent pauses are serialized, and a waiting call still honors its own context.
+
+### Configuration
+
+- `WithIdleTimeout(d time.Duration)`: Sets the idle-worker retirement interval. Non-positive values keep the 2-second default.
+- `WithPanicHandler(handler func(any))`: Observes task panics. A panic raised by the handler itself is also isolated.
 
 ## Notes
 
 - Submitting tasks after the pool has stopped panics.
 - During a `Pause`, tasks continue to queue but are not executed until the pause is lifted.
-- Idle workers are automatically shut down after 2 seconds (`idleTimeout`) of inactivity.
+- With the default configuration, the scheduler attempts to retire one idle worker per 2-second interval without new tasks. Running tasks are never interrupted by idle retirement.
 - Task functions must capture external values via closures, and return values should be sent over channels.
 - `Stop` and `StopWait` are synchronous; do not call them from a task running in the same pool.
 

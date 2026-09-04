@@ -28,9 +28,10 @@ go get github.com/wsshow/op/workerpool
 package main
 
 import (
-	"context"
+    "context"
     "fmt"
     "time"
+
     "github.com/wsshow/op/workerpool"
 )
 
@@ -69,7 +70,7 @@ func main() {
 
 ### 创建和初始化
 
-- `New(maxWorkers int) *WorkerPool`：创建一个新的工作协程池，指定最大并发工作协程数。
+- `New(maxWorkers int, opts ...Option) *WorkerPool`：创建工作协程池并指定最大并发数；小于 1 的值会被归一化为 1。
 
 ### 基本操作
 
@@ -83,13 +84,18 @@ func main() {
 - `Stop()`：停止协程池，仅完成当前运行任务，未运行任务被放弃。
 - `StopWait()`：停止协程池并等待所有排队任务完成。
 - `Stopped() bool`：返回协程池是否已停止。
-- `Pause(ctx context.Context)`：暂停所有工作协程，直到 Context 取消或超时。
+- `Pause(ctx context.Context)`：暂停所有工作协程，直到 context 取消或超时。并发 Pause 会串行执行，等待中的调用仍会响应自己的 context。
+
+### 配置
+
+- `WithIdleTimeout(d time.Duration)`：设置空闲 worker 的回收周期；非正值保留默认的 2 秒。
+- `WithPanicHandler(handler func(any))`：观察任务 panic；handler 自身的 panic 也会被隔离。
 
 ## 注意事项
 
 - 工作池停止后再次提交任务会 panic。
 - `Pause` 期间任务会继续排队，但不执行，直到暂停解除。
-- 空闲工作协程在 2 秒（`idleTimeout`）无任务后自动关闭。
+- 默认配置下，每经过一个没有新任务的 2 秒周期，调度器会尝试回收一个空闲 worker；正在运行的任务不会因空闲回收而中断。
 - 任务函数需通过闭包捕获外部值，返回值应通过通道传递。
 - `Stop` 和 `StopWait` 是同步调用，不要在同一工作池正在执行的任务内调用。
 
