@@ -292,6 +292,29 @@ func TestManagerRestart(t *testing.T) {
 	}
 }
 
+func TestManagerRemoveDuringRestartDoesNotLeaveOrphan(t *testing.T) {
+	m := NewManager()
+	opts := helperOpts("sleep", "30")
+	opts.OnAfter = func(*Process) { m.Remove("a") }
+	if err := m.Add("a", opts); err != nil {
+		t.Fatal(err)
+	}
+	p, ok := m.Get("a")
+	if !ok {
+		t.Fatal("process not registered")
+	}
+
+	if err := m.Restart("a"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Has("a") {
+		t.Fatal("process should remain removed")
+	}
+	if p.IsRunning() {
+		t.Fatal("removed process was restarted outside the manager")
+	}
+}
+
 func TestManagerCount(t *testing.T) {
 	m := NewManager()
 	defer m.Clear()

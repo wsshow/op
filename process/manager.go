@@ -101,7 +101,15 @@ func (m *Manager) Restart(name string) error {
 	if !ok {
 		return fmt.Errorf("process %q not found", name)
 	}
-	return p.Restart()
+	if err := p.Restart(); err != nil {
+		return err
+	}
+	// Remove 或 Clear 可能在 Restart 释放管理器锁后注销该进程。若注销
+	// 发生在旧进程停止、重新启动之前，确保重启后的进程不会脱离管理。
+	if !m.contains(name, p) {
+		p.Stop()
+	}
+	return nil
 }
 
 // Remove 注销并停止指定进程。名称不存在时静默返回。
@@ -135,9 +143,21 @@ func (m *Manager) StartAll() error {
 	for _, e := range idle {
 		if err := e.p.Start(); err != nil {
 			errs = append(errs, fmt.Errorf("start %q: %w", e.name, err))
+			continue
+		}
+		// 快照生成后进程可能已被 Remove 或 Clear 注销。再次核对身份，
+		// 避免把已注销（或已被同名新进程替换）的旧实例留在后台运行。
+		if !m.contains(e.name, e.p) {
+			e.p.Stop()
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (m *Manager) contains(name string, p *Process) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.procs[name] == p
 }
 
 // StopAll 并发停止所有运行中的进程。
