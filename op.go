@@ -3,6 +3,8 @@
 package op
 
 import (
+	"time"
+
 	"github.com/wsshow/op/deque"
 	"github.com/wsshow/op/emission"
 	"github.com/wsshow/op/generator"
@@ -114,6 +116,11 @@ func NewWorkerPool(maxWorkers int, opts ...Option) *WorkerPool {
 // WithPanicHandler 设置工作协程池的 panic 处理器，当任务发生 panic 时调用。
 func WithPanicHandler(handler func(any)) Option {
 	return workerpool.WithPanicHandler(handler)
+}
+
+// WithIdleTimeout 设置工作协程的空闲回收时间。
+func WithIdleTimeout(timeout time.Duration) Option {
+	return workerpool.WithIdleTimeout(timeout)
 }
 
 // ---------------------------------------------------------------------------

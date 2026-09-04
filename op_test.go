@@ -2,6 +2,7 @@ package op
 
 import (
 	"testing"
+	"time"
 )
 
 func TestNewString(t *testing.T) {
@@ -120,7 +121,7 @@ func TestNewGenerator(t *testing.T) {
 }
 
 func TestNewWorkerPool(t *testing.T) {
-	p := NewWorkerPool(4)
+	p := NewWorkerPool(4, WithIdleTimeout(time.Millisecond))
 	if p.Size() != 4 {
 		t.Errorf("NewWorkerPool: expected size 4, got %d", p.Size())
 	}
