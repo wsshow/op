@@ -414,10 +414,8 @@ import (
 package main
 
 import (
-    "context"
     "fmt"
     "log"
-    "time"
 
     "github.com/wsshow/op"
 )
@@ -432,7 +430,7 @@ func main() {
     sl := op.NewSlice(1, 2, 3, 4, 5).
         Filter(func(x int) bool { return x%2 != 0 }).
         Map(func(x int) int { return x * x })
-    fmt.Println(sl.Data())  // [1, 9, 25]
+    fmt.Println(sl.Data())  // [1 9 25]
 
     // 类型安全的事件发射器
     em := op.NewEmitter[string, string]()
@@ -446,7 +444,7 @@ func main() {
     passed := scores.
         Where(func(x int) bool { return x >= 80 }).
         Sort(func(a, b int) bool { return a < b })
-    fmt.Println(passed.Results())                                     // [85, 88, 92, 95]
+    fmt.Println(passed.Results())                                     // [85 88 92 95]
     fmt.Println("通过:", passed.Count(), "/", scores.Count())         // 通过: 4 / 5
 
     // 高性能双端队列
