@@ -33,15 +33,20 @@ type Subscription[E comparable, T any] struct {
 	emitter *Emitter[E, T]
 	event   E
 	id      uint64
+	once    sync.Once
 }
 
 // Unsubscribe 取消此订阅，从事件中移除对应的监听器。
 // 多次调用安全，后续调用为 no-op。
 func (s *Subscription[E, T]) Unsubscribe() {
-	if s.emitter != nil {
-		s.emitter.removeListenerByID(s.event, s.id)
-		s.emitter = nil
+	if s == nil {
+		return
 	}
+	s.once.Do(func() {
+		if s.emitter != nil {
+			s.emitter.removeListenerByID(s.event, s.id)
+		}
+	})
 }
 
 // Emitter 是一个泛型事件发射器，用于管理事件的监听和触发

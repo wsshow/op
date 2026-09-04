@@ -402,6 +402,27 @@ func TestDoubleUnsubscribe(t *testing.T) {
 	}
 }
 
+func TestConcurrentUnsubscribe(t *testing.T) {
+	em := NewEmitter[string, string]()
+	sub := em.On("test", func(string) {})
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sub.Unsubscribe()
+		}()
+	}
+	wg.Wait()
+	if count := em.GetListenerCount("test"); count != 0 {
+		t.Fatalf("listener count = %d, want 0", count)
+	}
+
+	var nilSub *Subscription[string, string]
+	nilSub.Unsubscribe()
+}
+
 func TestSetConcurrency(t *testing.T) {
 	em := NewEmitter[string, string]()
 	em.SetConcurrency(2)
