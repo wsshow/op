@@ -10,7 +10,7 @@
 - **高效操作**：在队列两端添加和移除元素的时间复杂度为摊销 O(1)。
 - **动态调整**：容量按需扩展或缩减，始终保持 2 的幂。
 - **丰富功能**：支持旋转、搜索、插入、移除等操作。
-- **安全设计**：对空队列或无效索引的操作会触发 panic。
+- **明确的安全选择**：严格访问方法在无效调用时 panic；`Peek*`、`TryPop*` 和 `GetAt` 提供不 panic 的替代方案。
 
 ## 安装
 
@@ -71,7 +71,7 @@ func main() {
 
 ### 创建和初始化
 
-- `New[T]() *Deque[T]`: 创建一个新的双端队列实例。
+- `New[T](capacity ...int) *Deque[T]`: 创建双端队列；可选基础容量会向上取整到 2 的幂。
 
 ### 基本操作
 
@@ -81,21 +81,24 @@ func main() {
 - `PopBack() T`: 从尾部移除并返回元素。
 - `Front() T`: 返回头部元素。
 - `Back() T`: 返回尾部元素。
+- `PeekFront() (T, bool)` / `PeekBack() (T, bool)`: 队列为空时不 panic 地读取两端元素。
+- `TryPopFront() (T, bool)` / `TryPopBack() (T, bool)`: 队列为空时不 panic 地移除两端元素。
 
 ### 容量管理
 
 - `Capacity() int`: 返回当前容量。
 - `Size() int`: 返回当前元素数量。
 - `Grow(n int)`: 确保有空间容纳额外 n 个元素。
-- `SetBaseCapacity(baseCap int)`: 设置基础容量。
+- `SetBaseCapacity(baseCap int)`: 设置后续缩容使用的最小容量，并向上取整到 2 的幂。
 
 ### 其他操作
 
 - `At(index int) T`: 获取指定索引处的元素。
+- `GetAt(index int) (T, bool)`: 索引无效时不 panic 地读取元素。
 - `Set(index int, item T)`: 设置指定索引处的值。
 - `Insert(at int, item T)`: 在指定位置插入元素。
 - `Remove(at int) T`: 移除并返回指定索引处的元素。
-- `Rotate(steps int)`: 旋转队列。
+- `Rotate(steps int)`: 正数将队头向队尾方向旋转，负数方向相反。
 - `Index(match func(T) bool) int`: 从头部搜索满足条件的元素索引。
 - `RIndex(match func(T) bool) int`: 从尾部搜索满足条件的元素索引。
 - `Swap(idxA, idxB int)`: 交换两个索引处的值。
@@ -105,7 +108,7 @@ func main() {
 
 - 队列操作（如 `PopFront`、`Front` 等）在空队列上调用会触发 panic。
 - 中间插入（`Insert`）和移除（`Remove`）的时间复杂度为 O(n)，不适合频繁使用。
-- 容量调整时，队列大小始终为 2 的幂次。
+- 始终保持为 2 的幂的是底层缓冲区容量，而不是队列中的元素数量。
 
 ## 参考来源
 

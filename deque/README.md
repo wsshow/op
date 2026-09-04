@@ -10,7 +10,7 @@ English | [简体中文](README_zh.md)
 - **Efficient Operations**: Adding and removing elements at both ends has amortized O(1) time complexity.
 - **Dynamic Resizing**: Capacity expands or shrinks as needed, always maintaining a power of 2.
 - **Rich Functionality**: Includes rotation, searching, insertion, and removal operations.
-- **Safety Design**: Operations on an empty queue or invalid indices trigger a panic.
+- **Explicit Safety Choices**: Strict accessors panic on invalid use; `Peek*`, `TryPop*`, and `GetAt` provide non-panicking alternatives.
 
 ## Installation
 
@@ -71,7 +71,7 @@ func main() {
 
 ### Creation and Initialization
 
-- `New[T]() *Deque[T]`: Creates a new double-ended queue instance.
+- `New[T](capacity ...int) *Deque[T]`: Creates a deque with an optional minimum base capacity, rounded up to a power of two.
 
 ### Basic Operations
 
@@ -81,21 +81,24 @@ func main() {
 - `PopBack() T`: Removes and returns the element from the back.
 - `Front() T`: Returns the element at the front.
 - `Back() T`: Returns the element at the back.
+- `PeekFront() (T, bool)` / `PeekBack() (T, bool)`: Read an end without panicking when empty.
+- `TryPopFront() (T, bool)` / `TryPopBack() (T, bool)`: Remove an end without panicking when empty.
 
 ### Capacity Management
 
 - `Capacity() int`: Returns the current capacity of the queue.
 - `Size() int`: Returns the current number of elements.
 - `Grow(n int)`: Ensures space for at least n additional elements.
-- `SetBaseCapacity(baseCap int)`: Sets the base capacity.
+- `SetBaseCapacity(baseCap int)`: Sets the minimum capacity used by later shrinking, rounded up to a power of two.
 
 ### Additional Operations
 
 - `At(index int) T`: Retrieves the element at the specified index.
+- `GetAt(index int) (T, bool)`: Retrieves an element without panicking for an invalid index.
 - `Set(index int, item T)`: Sets the value at the specified index.
 - `Insert(at int, item T)`: Inserts an element at the specified position.
 - `Remove(at int) T`: Removes and returns the element at the specified index.
-- `Rotate(steps int)`: Rotates the queue by the specified number of steps.
+- `Rotate(steps int)`: Rotates the front toward the back for positive steps and in the opposite direction for negative steps.
 - `Index(match func(T) bool) int`: Searches for the first element satisfying the condition from the front.
 - `RIndex(match func(T) bool) int`: Searches for the first element satisfying the condition from the back.
 - `Swap(idxA, idxB int)`: Swaps the elements at the specified indices.
@@ -105,7 +108,7 @@ func main() {
 
 - Operations like `PopFront`, `Front`, etc., will panic if called on an empty queue.
 - Middle insertions (`Insert`) and removals (`Remove`) have O(n) time complexity and are not suitable for frequent use.
-- During capacity adjustments, the queue size is always maintained as a power of 2.
+- The internal buffer capacity, not the number of elements, is always maintained as a power of two.
 
 ## Reference
 
