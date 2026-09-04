@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Manager 管理一组具名进程，所有方法均并发安全。
+// Manager 管理一组具名进程，所有方法均并发安全。零值可直接使用。
 type Manager struct {
 	mu    sync.RWMutex
 	procs map[string]*Process
@@ -25,6 +25,9 @@ func (m *Manager) Add(name string, opts Options) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.procs == nil {
+		m.procs = make(map[string]*Process)
+	}
 	if _, exists := m.procs[name]; exists {
 		return fmt.Errorf("process %q already exists", name)
 	}

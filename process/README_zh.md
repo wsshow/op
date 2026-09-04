@@ -3,7 +3,8 @@
 [English](README.md) | 简体中文
 
 `process` 用于管理外部命令以及具名命令集合。`Process` 和 `Manager` 均可
-并发使用，并且每次进程运行的状态都与后续重启代次相互隔离。
+并发使用，并且每次进程运行的状态都与后续重启代次相互隔离；`Manager` 零值
+可以直接使用。
 
 ## 安装
 
@@ -102,4 +103,3 @@ m.Range(func(name string, p *process.Process) bool {
 
 `Range` 和 `List` 基于快照工作，因此回调可以安全地新增或删除 Manager 条目。
 批量停止操作会并发执行，并等待初始快照中的所有进程结束。
-

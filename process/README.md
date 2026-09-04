@@ -4,7 +4,7 @@ English | [简体中文](README_zh.md)
 
 `process` manages external commands and named groups of commands. `Process` and
 `Manager` are safe for concurrent use and keep each process run isolated from
-later restarts.
+later restarts. The zero value of `Manager` is ready to use.
 
 ## Installation
 
@@ -109,4 +109,3 @@ m.Range(func(name string, p *process.Process) bool {
 `Range` and `List` operate on snapshots, so callbacks may safely add or remove
 manager entries. Bulk stop operations run concurrently and wait for every
 process in their initial snapshot.
-

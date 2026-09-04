@@ -28,6 +28,22 @@ func TestManagerAddGetHasCount(t *testing.T) {
 	p.Wait()
 }
 
+func TestManagerZeroValue(t *testing.T) {
+	var m Manager
+	defer m.Clear()
+
+	if err := m.Add("zero", helperOpts("exit", "0")); err != nil {
+		t.Fatalf("zero-value Manager.Add: %v", err)
+	}
+	p, ok := m.Get("zero")
+	if !ok {
+		t.Fatal("zero-value Manager did not retain added process")
+	}
+	if err := p.Wait(); err != nil {
+		t.Fatalf("zero-value Manager process: %v", err)
+	}
+}
+
 func TestManagerAddEmptyName(t *testing.T) {
 	m := NewManager()
 	if err := m.Add("", helperOpts("exit", "0")); err == nil {
