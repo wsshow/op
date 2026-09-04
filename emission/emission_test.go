@@ -216,6 +216,32 @@ func TestRecoverWith(t *testing.T) {
 	}
 }
 
+func TestPanicInRecovererDoesNotAbortEmit(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.RecoverWith(func(string, any, any) { panic("recoverer panic") })
+	em.On("test", func(string) { panic("listener panic") })
+	continued := false
+	em.On("test", func(string) { continued = true })
+
+	em.EmitSync("test", "data")
+	if !continued {
+		t.Fatal("panic in recoverer skipped the next listener")
+	}
+}
+
+func TestPanicInLoggerDoesNotAbortEmit(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetLogger(loggerFunc(func(string, ...any) { panic("logger panic") }))
+	em.On("test", func(string) { panic("listener panic") })
+	continued := false
+	em.On("test", func(string) { continued = true })
+
+	em.EmitSync("test", "data")
+	if !continued {
+		t.Fatal("panic in logger skipped the next listener")
+	}
+}
+
 func TestPanicRecoveryWithoutRecoverer(t *testing.T) {
 	em := NewEmitter[string, string]()
 	done := make(chan bool)

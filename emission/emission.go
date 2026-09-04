@@ -273,13 +273,19 @@ func callListener[E comparable, T any](event E, listener Listener[T], recoverer 
 	defer func() {
 		if r := recover(); r != nil {
 			if recoverer != nil {
-				recoverer(event, listener, r)
+				safelyCall(func() { recoverer(event, listener, r) })
 			} else if logger != nil {
-				logger.Warnf("panic in listener for event `%v`: %v", event, r)
+				safelyCall(func() { logger.Warnf("panic in listener for event `%v`: %v", event, r) })
 			}
 		}
 	}()
 	listener(value)
+}
+
+// safelyCall 隔离恢复器和 logger 中的 panic，避免错误处理路径再次破坏发射流程。
+func safelyCall(fn func()) {
+	defer func() { _ = recover() }()
+	fn()
 }
 
 // RecoverWith 设置自定义 panic 恢复监听器
