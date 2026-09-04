@@ -73,6 +73,17 @@ func BenchmarkFilter(b *testing.B) {
 	}
 }
 
+func BenchmarkFilterNone(b *testing.B) {
+	s := New[int]()
+	for i := 0; i < 1000; i++ {
+		s.Push(i)
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		s.Filter(func(int) bool { return false })
+	}
+}
+
 func BenchmarkForEach(b *testing.B) {
 	s := New[int]()
 	for i := 0; i < 1000; i++ {

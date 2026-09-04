@@ -132,9 +132,16 @@ func (s *Slice[T]) Map(fn func(T) T) *Slice[T] {
 
 // Filter 过滤切片，返回一个新 Slice 包含满足条件的元素。
 func (s *Slice[T]) Filter(predicate func(T) bool) *Slice[T] {
-	result := &Slice[T]{data: make([]T, 0, len(s.data))}
-	for _, v := range s.data {
+	result := &Slice[T]{data: make([]T, 0)}
+	allocated := false
+	for i, v := range s.data {
 		if predicate(v) {
+			if !allocated {
+				// 首次匹配时才按剩余元素上限分配，避免匹配为空或集中在尾部时
+				// 无谓地保留与整个输入等大的底层数组。
+				result.data = make([]T, 0, len(s.data)-i)
+				allocated = true
+			}
 			result.data = append(result.data, v)
 		}
 	}
