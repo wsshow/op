@@ -184,9 +184,11 @@ func (d *Deque[T]) Clear() {
 	if d.size == 0 {
 		return
 	}
-	var zero T
-	for i := 0; i < d.size; i++ {
-		d.buffer[d.realIndex(i)] = zero
+	if d.tailIdx > d.headIdx {
+		clear(d.buffer[d.headIdx:d.tailIdx])
+	} else {
+		clear(d.buffer[d.headIdx:])
+		clear(d.buffer[:d.tailIdx])
 	}
 	d.headIdx = 0
 	d.tailIdx = 0
