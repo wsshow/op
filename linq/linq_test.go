@@ -37,6 +37,11 @@ func TestRange(t *testing.T) {
 	if Range(0, -1).Count() != 0 {
 		t.Error("Range with negative count should be empty")
 	}
+	maxInt := int(^uint(0) >> 1)
+	overflow := Range(maxInt, 2)
+	if overflow.Error() == nil || overflow.Count() != 0 {
+		t.Fatalf("overflowing Range should return an errored sequence, got error=%v count=%d", overflow.Error(), overflow.Count())
+	}
 }
 
 func TestRepeat(t *testing.T) {

@@ -77,6 +77,9 @@ func Range(start, count int) Linq[int] {
 	if count <= 0 {
 		return Empty[int]()
 	}
+	if start > int(^uint(0)>>1)-(count-1) {
+		return Linq[int]{err: &LinqError{Op: "Range", Msg: "integer overflow"}}
+	}
 	data := make([]int, count)
 	for i := 0; i < count; i++ {
 		data[i] = start + i
