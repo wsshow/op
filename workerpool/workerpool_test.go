@@ -90,6 +90,9 @@ func TestStop(t *testing.T) {
 	if c := atomic.LoadInt32(&counter); c != 1 {
 		t.Errorf("Only running task should complete, expected counter 1, got %d", c)
 	}
+	if queued := pool.WaitingQueueSize(); queued != 0 {
+		t.Errorf("WaitingQueueSize after Stop = %d, want 0", queued)
+	}
 
 	assertPanics(t, "Submit after Stop should panic", func() {
 		pool.Submit(func() {})

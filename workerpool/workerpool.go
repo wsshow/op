@@ -269,6 +269,11 @@ dispatchLoop:
 
 	if p.waitAll {
 		p.runQueuedTasks()
+	} else {
+		// Stop 明确丢弃尚未运行的任务，同时释放闭包捕获的对象，并让
+		// WaitingQueueSize 在 Stop 返回前反映最终状态。
+		p.waitingQueue.Clear()
+		p.syncWaitingCount()
 	}
 
 	// 停止所有剩余工作协程
@@ -328,7 +333,7 @@ func (p *WorkerPool) stop(wait bool) {
 }
 
 // processWaitingQueue 处理等待队列：接收新任务或将队首任务分派给工作协程。
-// 返回 false 表示任务通道已关闭，协程池应停止。
+// 返回 false 表示协程池已收到停止信号。
 func (p *WorkerPool) processWaitingQueue() bool {
 	select {
 	case task := <-p.taskChan:
