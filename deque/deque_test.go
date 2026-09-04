@@ -407,6 +407,27 @@ func TestSetBaseCapacityacity(t *testing.T) {
 	assertEqual(t, q.baseCap, minCapacity, "wrong minimum capacity")
 }
 
+func TestShrinkAfterLoweringBaseCapacityKeepsPowerOfTwo(t *testing.T) {
+	q := New[int](64)
+	for i := 0; i < 40; i++ {
+		q.PushBack(i)
+	}
+	for i := 0; i < 25; i++ {
+		assertEqual(t, q.PopFront(), i, "wrong value before shrinking")
+	}
+
+	q.SetBaseCapacity(minCapacity)
+	assertEqual(t, q.PopFront(), 25, "wrong value that triggered shrinking")
+	assertEqual(t, q.Capacity(), 32, "shrunken capacity must remain a power of two")
+
+	for i := 40; i < 80; i++ {
+		q.PushBack(i)
+	}
+	for want := 26; want < 80; want++ {
+		assertEqual(t, q.PopFront(), want, "wrong value after shrinking and growing")
+	}
+}
+
 // 以下为基准测试
 
 // BenchmarkPushFront 基准测试头部添加性能

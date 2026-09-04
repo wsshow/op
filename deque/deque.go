@@ -356,10 +356,10 @@ func (d *Deque[T]) ensureCapacity() {
 // 缩容后的容量不低于 max(baseCap, minCapacity)。
 func (d *Deque[T]) shrinkIfNeeded() {
 	if len(d.buffer) > d.baseCap && d.size <= len(d.buffer)/4 {
-		newCap := max(d.size<<1, d.baseCap)
-		if newCap < minCapacity {
-			newCap = minCapacity
-		}
+		// SetBaseCapacity 可以在队列已有数据时降低基础容量。此时 size
+		// 不一定恰好等于当前容量的四分之一，仍须保持容量为 2 的幂，
+		// 否则 realIndex 的位掩码取模会产生错误索引。
+		newCap := ceilPowerOfTwo(max(d.size<<1, d.baseCap))
 		d.resize(newCap)
 	}
 }
