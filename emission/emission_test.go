@@ -766,6 +766,10 @@ type testLogger struct {
 	mu       sync.Mutex
 }
 
+type loggerFunc func(format string, args ...any)
+
+func (f loggerFunc) Warnf(format string, args ...any) { f(format, args...) }
+
 func (l *testLogger) Warnf(format string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -791,6 +795,32 @@ func TestMaxListenersWarning(t *testing.T) {
 	// 即便超出限制，监听器仍然被添加
 	if em.GetListenerCount("test") != 2 {
 		t.Errorf("expected 2 listeners despite warning, got %d", em.GetListenerCount("test"))
+	}
+}
+
+func TestMaxListenersLoggerCanReenterEmitter(t *testing.T) {
+	em := NewEmitter[string, string]()
+	em.SetMaxListeners(0)
+	logged := make(chan struct{})
+	em.SetLogger(loggerFunc(func(string, ...any) {
+		_ = em.GetListenerCount("test")
+		close(logged)
+	}))
+
+	registered := make(chan struct{})
+	go func() {
+		em.On("test", func(string) {})
+		close(registered)
+	}()
+	select {
+	case <-registered:
+	case <-time.After(time.Second):
+		t.Fatal("listener registration deadlocked in reentrant logger")
+	}
+	select {
+	case <-logged:
+	default:
+		t.Fatal("logger was not called")
 	}
 }
 

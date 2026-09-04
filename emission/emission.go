@@ -73,12 +73,9 @@ func NewEmitter[E comparable, T any]() *Emitter[E, T] {
 // addListener 内部方法，添加监听器到指定事件，返回 Subscription
 func (e *Emitter[E, T]) addListener(event E, listener Listener[T], once bool) *Subscription[E, T] {
 	e.mu.Lock()
-
-	if e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners {
-		if e.logger != nil {
-			e.logger.Warnf("event `%v` exceeds max listeners limit of %d", event, e.maxListeners)
-		}
-	}
+	warn := e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners
+	logger := e.logger
+	maxListeners := e.maxListeners
 
 	id := e.nextID
 	e.nextID++
@@ -89,6 +86,10 @@ func (e *Emitter[E, T]) addListener(event E, listener Listener[T], once bool) *S
 	}
 	e.events[event] = append(e.events[event], wrapper)
 	e.mu.Unlock()
+	if warn && logger != nil {
+		// Logger 是用户代码，不能在持有 emitter 锁时调用，否则重入会死锁。
+		logger.Warnf("event `%v` exceeds max listeners limit of %d", event, maxListeners)
+	}
 
 	return &Subscription[E, T]{
 		emitter: e,
