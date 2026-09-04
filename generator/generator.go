@@ -49,7 +49,11 @@ type Generator[T any] struct {
 }
 
 // NewGenerator 创建并启动一个新的生成器，在后台 goroutine 中运行 genFunc。
+// genFunc 为 nil 时同步 panic。
 func NewGenerator[T any](genFunc func(yield Yield[T])) *Generator[T] {
+	if genFunc == nil {
+		panic("generator: nil generator function")
+	}
 	g := &Generator[T]{
 		yield: Yield[T]{
 			valueCh:  make(chan T),

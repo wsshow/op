@@ -83,7 +83,7 @@ gen.Stop() // generator goroutine will exit
 
 #### Creation
 
-- `NewGenerator[T any](genFunc func(yield Yield[T])) *Generator[T]` — Creates and starts a new generator.
+- `NewGenerator[T any](genFunc func(yield Yield[T])) *Generator[T]` — Creates and starts a new generator. A nil function panics synchronously.
 
 #### Yield
 

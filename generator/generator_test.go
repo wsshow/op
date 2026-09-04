@@ -18,6 +18,15 @@ func TestNewGenerator(t *testing.T) {
 	}
 }
 
+func TestNewGeneratorNilPanicsSynchronously(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewGenerator(nil) did not panic")
+		}
+	}()
+	NewGenerator[int](nil)
+}
+
 func TestSend(t *testing.T) {
 	gen := NewGenerator(func(yield Yield[int]) {
 		result := yield.Send(42)
