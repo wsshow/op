@@ -407,6 +407,10 @@ func TestRepeat(t *testing.T) {
 	if s2.String() != "" {
 		t.Errorf("Repeat(0): expected '', got '%s'", s2.String())
 	}
+	s3 := New("x").Repeat(-1)
+	if s3.String() != "" {
+		t.Errorf("Repeat(-1): expected '', got '%s'", s3.String())
+	}
 }
 
 func TestJoin(t *testing.T) {

@@ -229,6 +229,10 @@ func (s *String) IsBlank() bool {
 // Repeat 将字符串重复 count 次，返回自身。
 // count <= 0 时变为空字符串。
 func (s *String) Repeat(count int) *String {
+	if count <= 0 {
+		s.str = ""
+		return s
+	}
 	s.str = strings.Repeat(s.str, count)
 	return s
 }
