@@ -430,24 +430,32 @@ func TestRestartMinInterval(t *testing.T) {
 func TestRestartConcurrent(t *testing.T) {
 	var starts int32
 	p := New(Options{
-		ExecPath: os.Args[0],
-		Args:     []string{"-test.run=TestHelperProcess", "--", "sleep", "5"},
-		OnBefore: func(_ *Process) { atomic.AddInt32(&starts, 1) },
+		ExecPath:           os.Args[0],
+		Args:               []string{"-test.run=TestHelperProcess", "--", "exit", "0"},
+		MinRestartInterval: 500 * time.Millisecond,
+		OnBefore:           func(_ *Process) { atomic.AddInt32(&starts, 1) },
 	})
 	mustStart(t, p)
 
 	var wg sync.WaitGroup
 	barrier := make(chan struct{})
+	errs := make(chan error, 10)
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-barrier
-			p.Restart()
+			errs <- p.Restart()
 		}()
 	}
 	close(barrier)
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("Restart() error = %v", err)
+		}
+	}
 	mustWait(t, p)
 
 	if n := atomic.LoadInt32(&starts); n != 2 {
