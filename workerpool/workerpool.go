@@ -21,10 +21,11 @@ type Option func(*WorkerPool)
 // WithIdleTimeout 设置工作协程的空闲超时时间。
 // 若 d <= 0，将使用 DefaultIdleTimeout。
 func WithIdleTimeout(d time.Duration) Option {
+	if d <= 0 {
+		d = DefaultIdleTimeout
+	}
 	return func(p *WorkerPool) {
-		if d > 0 {
-			p.idleTimeout = d
-		}
+		p.idleTimeout = d
 	}
 }
 

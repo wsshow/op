@@ -355,6 +355,27 @@ func TestIdleWorkerShutdown(t *testing.T) {
 	}
 }
 
+func TestWithIdleTimeoutUsesLastOption(t *testing.T) {
+	pool := New(1, WithIdleTimeout(time.Hour), WithIdleTimeout(0))
+	if pool.idleTimeout != DefaultIdleTimeout {
+		t.Fatalf("zero idle timeout = %v, want default %v", pool.idleTimeout, DefaultIdleTimeout)
+	}
+	pool.Stop()
+
+	pool = New(1, WithIdleTimeout(time.Hour), WithIdleTimeout(-time.Second))
+	if pool.idleTimeout != DefaultIdleTimeout {
+		t.Fatalf("negative idle timeout = %v, want default %v", pool.idleTimeout, DefaultIdleTimeout)
+	}
+	pool.Stop()
+
+	const custom = 3 * time.Second
+	pool = New(1, WithIdleTimeout(0), WithIdleTimeout(custom))
+	if pool.idleTimeout != custom {
+		t.Fatalf("custom idle timeout = %v, want %v", pool.idleTimeout, custom)
+	}
+	pool.Stop()
+}
+
 // TestMultiplePause 测试多次暂停
 func TestMultiplePause(t *testing.T) {
 	pool := New(1)
