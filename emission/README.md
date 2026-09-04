@@ -10,8 +10,8 @@ English | [简体中文](README_zh.md)
 - **Type Safety**: Compile-time type checking with Go generics (Go 1.24+ module requirement)
 - **Async & Sync**: `Emit` (fire-and-forget), `EmitWait` (concurrent with wait), and `EmitSync` (sequential)
 - **Once Listeners**: One-time event listeners that auto-remove after first trigger
-- **Panic Recovery**: Always-on panic recovery — custom handler or built-in logging
-- **Global Concurrency Control**: Real semaphore-based backpressure shared across all emit calls
+- **Panic Recovery**: Always-on listener panic isolation with optional recovery callbacks or logging
+- **Global Concurrency Control**: A shared semaphore caps concurrently executing async listeners
 - **Thread-Safe**: All operations protected by mutex for concurrent use
 - **Max Listeners Warning**: Configurable soft limit to detect potential memory leaks (Node.js-style)
 
@@ -250,7 +250,7 @@ emitter.On("a", func(n int) {})
 emitter.On("a", func(n int) {})
 emitter.On("b", func(n int) {})
 
-fmt.Println(emitter.Events())              // [a b]
+fmt.Println(emitter.Events())              // contains a and b; order is unspecified
 fmt.Println(emitter.GetListenerCount("a")) // 2
 fmt.Println(emitter.TotalListenerCount())  // 3
 ```
@@ -281,7 +281,7 @@ fmt.Println(emitter.TotalListenerCount())  // 3
 ### Introspection
 
 - `GetListenerCount(event E) int`: Listener count for an event
-- `Events() []E`: List all registered event identifiers
+- `Events() []E`: List all registered event identifiers in unspecified order
 - `TotalListenerCount() int`: Total listeners across all events
 
 ### Configuration
@@ -309,11 +309,13 @@ Traditional single-generic designs force event identifiers and parameters to sha
 
 ### Global Concurrency Control
 
-`SetConcurrency(n)` creates a real semaphore shared across all `Emit` and `EmitWait` calls. When the semaphore is full, new listener goroutines wait until a slot opens — providing true backpressure control, not just per-batch worker limiting.
+`SetConcurrency(n)` creates a semaphore shared by `Emit` and `EmitWait` calls that start after the setting changes. When it is full, internal dispatch waits for a slot; `Emit` itself remains fire-and-forget and returns immediately. In-flight emissions keep using the semaphore captured when they started.
+
+An `EmitWait` listener must not synchronously call `EmitWait` on the same emitter when all permits may already be occupied; doing so would wait for its own permit. Use `Emit`, `EmitSync`, or a separate emitter for that reentrant path.
 
 ### Panic Recovery
 
-Panic recovery is always active. With a custom `RecoveryListener`, panics are routed there. Without one, panics are logged via the configured `Logger`. Listeners never crash the emitter or silently die.
+Panic recovery is always active. With a custom `RecoveryListener`, panics are routed there; otherwise they are logged when a `Logger` is configured. With neither configured, the panic is safely recovered and discarded. Panics raised by the recovery callback or logger are isolated as well.
 
 ## Inspiration
 

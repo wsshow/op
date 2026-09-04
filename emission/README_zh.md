@@ -10,8 +10,8 @@
 - **类型安全**: 使用 Go 泛型（模块要求 Go 1.24+）确保编译时类型检查
 - **三种触发模式**: `Emit`（异步即弃）、`EmitWait`（并发等待）、`EmitSync`（同步顺序）
 - **一次性监听器**: 内置一次性事件监听器，触发后自动移除
-- **Panic 恢复**: 始终开启的 panic 恢复 —— 自定义处理器或内置日志
-- **全局并发控制**: 真正的信号量背压控制，跨所有 Emit 调用共享
+- **Panic 恢复**: 始终隔离监听器 panic，并可选交给恢复回调或日志处理
+- **全局并发控制**: 通过共享信号量限制同时执行的异步监听器数量
 - **线程安全**: 互斥锁保护所有操作，支持并发使用
 - **最大监听器告警**: 可配置的软限制，用于检测潜在内存泄漏（Node.js 风格）
 
@@ -250,7 +250,7 @@ emitter.On("a", func(n int) {})
 emitter.On("a", func(n int) {})
 emitter.On("b", func(n int) {})
 
-fmt.Println(emitter.Events())              // [a b]
+fmt.Println(emitter.Events())              // 包含 a 和 b；顺序不确定
 fmt.Println(emitter.GetListenerCount("a")) // 2
 fmt.Println(emitter.TotalListenerCount())  // 3
 ```
@@ -281,7 +281,7 @@ fmt.Println(emitter.TotalListenerCount())  // 3
 ### 内省
 
 - `GetListenerCount(event E) int`: 获取事件的监听器数量
-- `Events() []E`: 列出所有已注册的事件标识
+- `Events() []E`: 以不确定顺序列出所有已注册的事件标识
 - `TotalListenerCount() int`: 获取所有事件的监听器总数
 
 ### 配置
@@ -309,11 +309,13 @@ fmt.Println(emitter.TotalListenerCount())  // 3
 
 ### 全局并发控制
 
-`SetConcurrency(n)` 创建真正的信号量，跨所有 `Emit` 和 `EmitWait` 调用共享。当信号量满时，新的监听器 goroutine 会等待空位 —— 提供真正的背压控制，而非仅限单次批处理。
+`SetConcurrency(n)` 创建信号量，由设置变更后开始的 `Emit` 和 `EmitWait` 调用共享。信号量满时内部调度会等待空位；`Emit` 本身仍是即发即忘并立即返回。已经开始的触发继续使用启动时捕获的信号量。
+
+如果所有许可都可能已被占用，`EmitWait` 的监听器不能在同一个 emitter 上同步重入调用 `EmitWait`，否则会等待自己持有的许可。该路径应使用 `Emit`、`EmitSync` 或独立的 emitter。
 
 ### Panic 恢复
 
-Panic 恢复始终开启。设置自定义 `RecoveryListener` 时，panic 会路由到该处理器。未设置时，panic 会通过配置的 `Logger` 记录。监听器的 panic 永远不会导致 emitter 崩溃或静默丢失。
+Panic 恢复始终开启。设置自定义 `RecoveryListener` 时，panic 会路由到该处理器；否则在配置了 `Logger` 时记录日志。两者都未配置时，panic 会被安全恢复并丢弃。恢复回调或 logger 自身的 panic 也会被隔离。
 
 ## 参考来源
 

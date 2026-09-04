@@ -332,7 +332,7 @@ func (e *Emitter[E, T]) GetListenerCount(event E) int {
 	return len(e.events[event])
 }
 
-// Events 返回所有已注册的事件列表
+// Events 返回所有已注册的事件列表，顺序不定。
 func (e *Emitter[E, T]) Events() []E {
 	e.mu.Lock()
 	defer e.mu.Unlock()
