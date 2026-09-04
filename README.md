@@ -5,7 +5,7 @@
 
 English | [简体中文](README_zh.md)
 
-`op` is a carefully crafted Go utility toolkit providing reusable, generic-first packages for common programming tasks. Each package is designed for performance and usability, with clean APIs that integrate naturally into Go projects. Import the top-level package to access all functionality without managing individual sub-package dependencies.
+`op` is a carefully crafted Go utility toolkit providing reusable, generic-first packages for common programming tasks. Each package is designed for performance and usability, with clean APIs that integrate naturally into Go projects. The top-level package exposes the core types and constructors; generic free functions remain available from their focused sub-packages.
 
 ## Features
 
@@ -29,8 +29,8 @@ d.PushFront(0)                   // [0, 1, 2]
 d.PushBack(3)                    // [0, 1, 2, 3]
 
 d.PopFront()                    // returns 0, panics if empty
-d.Rotate(1)                      // rotate forward: [3, 1, 2]
-d.Insert(1, 99)                  // [3, 99, 1, 2]
+d.Rotate(1)                      // rotate forward: [2, 3, 1]
+d.Insert(1, 99)                  // [2, 99, 3, 1]
 
 // Safe access without panics
 if v, ok := d.PeekFront(); ok {
@@ -146,7 +146,7 @@ joined := linq.Join(
 
 ### process - Process Management
 
-Tools for spawning, monitoring, and managing external processes with full lifecycle control. Supports stdout/stderr line callbacks, automatic restart with interval gating, context-driven cancellation with a bounded kill fallback, and multi-process orchestration via `Manager`.
+Tools for spawning, monitoring, and managing external processes with full lifecycle control. Supports stdout/stderr line callbacks, automatic restart with interval gating, context-driven cancellation with bounded stop waiting, and multi-process orchestration via `Manager`.
 
 ```go
 // --- Single process ---
@@ -168,7 +168,7 @@ if err := proc.Start(); err != nil {
 <-proc.Done()
 log.Printf("Exit code: %d", proc.ExitCode())
 
-// Graceful restart with backpressure
+// Restart with minimum-interval gating
 proc.Restart()
 
 // Signal handling
