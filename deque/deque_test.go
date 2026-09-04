@@ -2,6 +2,7 @@ package deque
 
 import (
 	"fmt"
+	"math/rand"
 	"slices"
 	"testing"
 	"unicode"
@@ -425,6 +426,95 @@ func TestShrinkAfterLoweringBaseCapacityKeepsPowerOfTwo(t *testing.T) {
 	}
 	for want := 26; want < 80; want++ {
 		assertEqual(t, q.PopFront(), want, "wrong value after shrinking and growing")
+	}
+}
+
+func TestRandomizedOperationsMatchSliceModel(t *testing.T) {
+	for seed := int64(0); seed < 10; seed++ {
+		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(seed))
+			var q Deque[int]
+			var model []int
+
+			for step := 0; step < 2_000; step++ {
+				op := rng.Intn(10)
+				if len(model) > 200 {
+					op = 2 + rng.Intn(2)
+				}
+				switch op {
+				case 0:
+					value := rng.Int()
+					q.PushBack(value)
+					model = append(model, value)
+				case 1:
+					value := rng.Int()
+					q.PushFront(value)
+					model = append([]int{value}, model...)
+				case 2:
+					if len(model) > 0 {
+						assertEqual(t, q.PopFront(), model[0], "seed %d step %d PopFront", seed, step)
+						model = model[1:]
+					}
+				case 3:
+					if len(model) > 0 {
+						last := len(model) - 1
+						assertEqual(t, q.PopBack(), model[last], "seed %d step %d PopBack", seed, step)
+						model = model[:last]
+					}
+				case 4:
+					at := rng.Intn(len(model) + 1)
+					value := rng.Int()
+					q.Insert(at, value)
+					model = slices.Insert(model, at, value)
+				case 5:
+					if len(model) > 0 {
+						at := rng.Intn(len(model))
+						assertEqual(t, q.Remove(at), model[at], "seed %d step %d Remove", seed, step)
+						model = slices.Delete(model, at, at+1)
+					}
+				case 6:
+					if len(model) > 1 {
+						steps := rng.Intn(len(model)*4+1) - len(model)*2
+						q.Rotate(steps)
+						n := steps % len(model)
+						if n < 0 {
+							n += len(model)
+						}
+						model = append(slices.Clone(model[n:]), model[:n]...)
+					}
+				case 7:
+					if len(model) > 0 {
+						at := rng.Intn(len(model))
+						value := rng.Int()
+						q.Set(at, value)
+						model[at] = value
+					}
+				case 8:
+					q.SetBaseCapacity([]int{0, 16, 17, 32, 64}[rng.Intn(5)])
+				case 9:
+					if rng.Intn(20) == 0 {
+						q.Clear()
+						model = model[:0]
+					} else if len(model) > 1 {
+						a, b := rng.Intn(len(model)), rng.Intn(len(model))
+						q.Swap(a, b)
+						model[a], model[b] = model[b], model[a]
+					}
+				}
+
+				if q.Size() != len(model) {
+					t.Fatalf("seed %d step %d: size = %d, want %d", seed, step, q.Size(), len(model))
+				}
+				if capacity := q.Capacity(); capacity != 0 && capacity&(capacity-1) != 0 {
+					t.Fatalf("seed %d step %d: capacity %d is not a power of two", seed, step, capacity)
+				}
+				for i, want := range model {
+					if got := q.At(i); got != want {
+						t.Fatalf("seed %d step %d index %d: got %d, want %d", seed, step, i, got, want)
+					}
+				}
+			}
+		})
 	}
 }
 
