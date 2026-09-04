@@ -14,7 +14,8 @@
 
 ## 设计原则
 
-- **容器操作**（Push、Pop、Shift、Unshift、Insert、Remove、Set、Clear）：原地修改，返回 self 以支持链式调用。
+- **可链式容器操作**（Push、Unshift、Insert、Clear）：原地修改并返回 self。
+- **返回结果的容器操作**（Pop、Shift、Remove、Set）：原地修改并返回被删除的值或成功状态。
 - **原地变换**（Sort、Reverse）：原地修改，与 Go 标准库一致。
 - **不可变变换**（Map、Filter、Concat、Sub、Clone）：返回新 `*Slice[T]`，不修改原切片。
 - **查询**（Find、FindIndex、First、Last、Every、Some、Reduce 等）：返回计算结果。
@@ -319,7 +320,7 @@ expensive.ForEach(func(p Product) {
 ### 创建
 - `New[T any](values ...T) *Slice[T]`: 创建包含初始值的新切片
 
-### 容器操作（原地修改，返回 self）
+### 容器操作（原地修改，返回值因方法而异）
 
 | 方法 | 描述 |
 |------|------|

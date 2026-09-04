@@ -14,7 +14,8 @@ English | [简体中文](README_zh.md)
 
 ## Design Principles
 
-- **Container mutations** (Push, Pop, Shift, Unshift, Insert, Remove, Set, Clear): operate in-place, return self for chaining.
+- **Chainable container mutations** (Push, Unshift, Insert, Clear): operate in-place and return self.
+- **Value-returning mutations** (Pop, Shift, Remove, Set): operate in-place and report the removed value or success status.
 - **In-place transforms** (Sort, Reverse): modify in-place, consistent with Go's standard library.
 - **Immutable transforms** (Map, Filter, Concat, Sub, Clone): return a new `*Slice[T]`, leaving the original unchanged.
 - **Queries** (Find, FindIndex, First, Last, Every, Some, Reduce, etc.): return computed values.
@@ -319,7 +320,7 @@ expensive.ForEach(func(p Product) {
 ### Creation
 - `New[T any](values ...T) *Slice[T]`: Create a new slice with initial values
 
-### Container Mutations (in-place, return self)
+### Container Mutations (in-place; return values vary)
 
 | Method | Description |
 |--------|-------------|
