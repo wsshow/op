@@ -3,6 +3,7 @@ package emission
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -390,6 +391,32 @@ func TestMultipleOnceListeners(t *testing.T) {
 	}
 	if em.GetListenerCount("event") != 0 {
 		t.Errorf("expected 0 listeners, got %d", em.GetListenerCount("event"))
+	}
+}
+
+func TestOnceRunsAtMostOnceAcrossConcurrentEmits(t *testing.T) {
+	em := NewEmitter[string, int]()
+	var calls atomic.Int32
+	em.Once("event", func(int) { calls.Add(1) })
+
+	start := make(chan struct{})
+	var emitters sync.WaitGroup
+	for range 100 {
+		emitters.Add(1)
+		go func() {
+			defer emitters.Done()
+			<-start
+			em.EmitSync("event", 1)
+		}()
+	}
+	close(start)
+	emitters.Wait()
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("once listener calls = %d, want 1", got)
+	}
+	if got := em.GetListenerCount("event"); got != 0 {
+		t.Fatalf("listener count = %d, want 0", got)
 	}
 }
 
