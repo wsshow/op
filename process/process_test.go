@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -681,7 +682,13 @@ func TestContextCancellation(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	p.Wait()
+	err := p.Wait()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait() error = %v, want context.Canceled", err)
+	}
+	if !errors.Is(p.Error(), context.Canceled) {
+		t.Fatalf("Error() = %v, want context.Canceled", p.Error())
+	}
 
 	if p.IsRunning() {
 		t.Fatal("process should not be running after context cancellation")
@@ -702,7 +709,10 @@ func TestContextCancelledBeforeStart(t *testing.T) {
 	if err := p.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p.Wait()
+	err := p.Wait()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait() error = %v, want context.Canceled", err)
+	}
 	if p.ExitCode() != -1 {
 		t.Log("process started despite cancelled context (timing-dependent)")
 	}

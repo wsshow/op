@@ -52,11 +52,12 @@ type Options struct {
 // processRun 保存一次启动的全部可变状态。每次启动使用独立实例，避免退出回调
 // 重启进程时，旧运行代次关闭或覆盖新代次的状态。
 type processRun struct {
-	done         chan struct{}
-	cancel       context.CancelFunc
-	cmd          *exec.Cmd
-	processState *os.ProcessState
-	err          error
+	done          chan struct{}
+	cancel        context.CancelFunc
+	cmd           *exec.Cmd
+	processState  *os.ProcessState
+	stopRequested bool
+	err           error
 }
 
 // Process 管理单个外部进程的完整生命周期。
@@ -200,9 +201,18 @@ func (p *Process) exec(ctx context.Context, opts Options, r *processRun) {
 	// Wait 会写 ProcessState；只在它返回后发布不可变结果。
 	p.mu.Lock()
 	r.processState = cmd.ProcessState
+	stopRequested := r.stopRequested
 	p.mu.Unlock()
-	if waitErr != nil && ctx.Err() == nil {
-		p.addRunError(r, fmt.Errorf("wait: %w", waitErr))
+	if waitErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// Stop 是正常的生命周期操作，不作为运行错误报告；父 context
+			// 的取消则必须保留，方便调用方使用 errors.Is 判断原因。
+			if !stopRequested {
+				p.addRunError(r, fmt.Errorf("context: %w", ctxErr))
+			}
+		} else {
+			p.addRunError(r, fmt.Errorf("wait: %w", waitErr))
+		}
 	}
 }
 
@@ -249,6 +259,7 @@ func (p *Process) StopWithTimeout(timeout time.Duration) {
 	}
 	r := p.run
 	cancel := r.cancel
+	r.stopRequested = true
 	p.mu.Unlock()
 
 	cancel()
