@@ -10,7 +10,7 @@ English | [简体中文](README_zh.md)
 - **Bidirectional**: `Send` yields a value and optionally receives a result from the caller.
 - **Early Termination**: `Stop` signals the generator to stop, preventing goroutine leaks.
 - **Simple Iteration**: `Next` fetches values until the generator is done.
-- **Resource Safe**: Channels are automatically closed on completion.
+- **Resource Safe**: Completion is signaled automatically; call `Stop` when abandoning iteration early.
 
 ### Design
 

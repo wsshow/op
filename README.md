@@ -146,7 +146,7 @@ joined := linq.Join(
 
 ### process - Process Management
 
-Tools for spawning, monitoring, and managing external processes with full lifecycle control. Supports stdout/stderr line callbacks, automatic restart with interval gating, graceful shutdown with configurable timeouts, and multi-process orchestration via `Manager`.
+Tools for spawning, monitoring, and managing external processes with full lifecycle control. Supports stdout/stderr line callbacks, automatic restart with interval gating, context-driven cancellation with a bounded kill fallback, and multi-process orchestration via `Manager`.
 
 ```go
 // --- Single process ---
@@ -297,6 +297,7 @@ A high-performance goroutine pool that limits concurrency and queues overflow ta
 
 ```go
 wp := op.NewWorkerPool(4,  // max concurrent workers
+	 op.WithIdleTimeout(30*time.Second),
     op.WithPanicHandler(func(v any) {
         log.Printf("Task panicked: %v", v)
     }),

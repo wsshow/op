@@ -10,7 +10,7 @@ English | [简体中文](README_zh.md)
 - **Dynamic Adjustment**: Creates or terminates workers dynamically based on task load.
 - **Task Queue**: Supports a waiting queue for tasks when all workers are busy.
 - **Pause and Stop**: Allows pausing all workers or stopping the pool, with an option to wait for queued tasks to complete.
-- **Efficient Design**: Non-blocking task submission, with idle workers automatically shut down after a timeout.
+- **Efficient Design**: Submission hands tasks to the scheduler without waiting for execution; idle workers automatically shut down after a timeout.
 
 ## Installation
 
@@ -28,6 +28,7 @@ Here are some basic usage examples:
 package main
 
 import (
+	"context"
     "fmt"
     "time"
     "github.com/wsshow/op/workerpool"
@@ -72,8 +73,8 @@ func main() {
 
 ### Basic Operations
 
-- `Submit(task func())`: Submits an asynchronous task to the worker pool.
-- `SubmitWait(task func())`: Submits a task and waits for its execution to complete.
+- `Submit(task func())`: Submits an asynchronous task; it may briefly block until the scheduler receives it.
+- `SubmitWait(task func())`: Submits a task and waits for completion. If a concurrent `Stop` discards it before execution, the call returns when the pool stops.
 - `Size() int`: Returns the maximum number of concurrent workers.
 - `WaitingQueueSize() int`: Returns the number of tasks in the waiting queue.
 
@@ -86,10 +87,11 @@ func main() {
 
 ## Notes
 
-- Submitting tasks after calling `Stop` or `StopWait` may cause a panic.
+- Submitting tasks after the pool has stopped panics.
 - During a `Pause`, tasks continue to queue but are not executed until the pause is lifted.
 - Idle workers are automatically shut down after 2 seconds (`idleTimeout`) of inactivity.
 - Task functions must capture external values via closures, and return values should be sent over channels.
+- `Stop` and `StopWait` are synchronous; do not call them from a task running in the same pool.
 
 ## Reference
 

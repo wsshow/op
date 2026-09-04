@@ -146,7 +146,7 @@ joined := linq.Join(
 
 ### process - 进程管理
 
-外部进程的生成、监控和生命周期管理工具。支持 stdout/stderr 逐行回调、带间隔门控的自动重启、可配置超时的优雅关闭，以及通过 `Manager` 实现的多进程编排。
+外部进程的生成、监控和生命周期管理工具。支持 stdout/stderr 逐行回调、带间隔门控的自动重启、基于 context 取消并带有限时强制终止兜底，以及通过 `Manager` 实现的多进程编排。
 
 ```go
 // --- 单个进程 ---
@@ -297,6 +297,7 @@ op.NewString("こんにちは").Reverse()                     // "はちにん�
 
 ```go
 wp := op.NewWorkerPool(4,  // 最大并发工作协程数
+	 op.WithIdleTimeout(30*time.Second),
     op.WithPanicHandler(func(v any) {
         log.Printf("任务 panic: %v", v)
     }),
