@@ -132,7 +132,7 @@ func (s *Slice[T]) Map(fn func(T) T) *Slice[T] {
 
 // Filter 过滤切片，返回一个新 Slice 包含满足条件的元素。
 func (s *Slice[T]) Filter(predicate func(T) bool) *Slice[T] {
-	result := New[T]()
+	result := &Slice[T]{data: make([]T, 0, len(s.data))}
 	for _, v := range s.data {
 		if predicate(v) {
 			result.data = append(result.data, v)
