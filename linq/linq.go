@@ -367,7 +367,8 @@ func (ol OrderedLinq[T]) ThenByDescending(cmpFn func(a, b T) int) OrderedLinq[T]
 	if ol.err != nil {
 		return ol
 	}
-	return ol.ThenBy(func(a, b T) int { return -cmpFn(a, b) })
+	// 交换参数反转顺序，避免对 math.MinInt 取负仍为负数的溢出。
+	return ol.ThenBy(func(a, b T) int { return cmpFn(b, a) })
 }
 
 // ---------------------------------------------------------------------------

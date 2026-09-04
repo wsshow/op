@@ -837,6 +837,24 @@ func TestThenByDescending(t *testing.T) {
 	}
 }
 
+func TestThenByDescendingHandlesMinIntComparer(t *testing.T) {
+	minInt := -int(^uint(0)>>1) - 1
+	compare := func(a, b int) int {
+		switch {
+		case a < b:
+			return minInt
+		case a > b:
+			return 1
+		default:
+			return 0
+		}
+	}
+	ol := OrderBy(From([]int{1, 2}), func(int) int { return 0 })
+	if got := ol.ThenByDescending(compare).Results(); !reflect.DeepEqual(got, []int{2, 1}) {
+		t.Fatalf("ThenByDescending = %v, want [2 1]", got)
+	}
+}
+
 func ExampleFrom() {
 	nums := From([]int{1, 2, 3, 4, 5}).
 		Where(func(x int) bool { return x%2 == 0 }).
