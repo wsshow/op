@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -258,6 +259,22 @@ func TestOnStdout(t *testing.T) {
 	}
 	if len(lines) != 2 {
 		t.Fatalf("got %d lines, want 2: %v", len(lines), lines)
+	}
+}
+
+func TestReadLinesRemovesOnlyLineEnding(t *testing.T) {
+	var lines []string
+	p := New(Options{})
+	p.readLines(
+		&processRun{},
+		strings.NewReader("lf\ncrlf\r\nextra-cr\r\r\nblank\n\nno-newline\r"),
+		func(line string) { lines = append(lines, line) },
+		"stdout",
+	)
+
+	want := []string{"lf", "crlf", "extra-cr\r", "blank", "", "no-newline\r"}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("read lines = %q, want %q", lines, want)
 	}
 }
 

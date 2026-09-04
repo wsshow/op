@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -236,7 +235,13 @@ func (p *Process) readLines(r *processRun, reader io.Reader, handler func(string
 	for {
 		line, err := br.ReadString('\n')
 		if line != "" {
-			handler(strings.TrimRight(line, "\r\n"))
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+				if line != "" && line[len(line)-1] == '\r' {
+					line = line[:len(line)-1]
+				}
+			}
+			handler(line)
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
