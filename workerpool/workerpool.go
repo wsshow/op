@@ -145,9 +145,18 @@ func (p *WorkerPool) SubmitWait(task func()) {
 	}
 }
 
-// submit 在任务通道和停止信号之间仲裁。任务通道永不关闭，从而避免 Submit
-// 与 Stop 并发时发生 send/close panic；公开提交在停止后仍按既有契约 panic。
+// submit 在任务通道和停止信号之间仲裁。第一次非阻塞检查保证停止信号已经
+// 关闭时绝不会再随机选中发送分支；第二次 select 处理提交与停止同时发生的
+// 线性化竞争。任务通道永不关闭，因此不存在 send/close panic。
 func (p *WorkerPool) submit(task func(), panicIfStopped bool) bool {
+	select {
+	case <-p.stopSignal:
+		if panicIfStopped {
+			panic("workerpool: submit on stopped pool")
+		}
+		return false
+	default:
+	}
 	select {
 	case p.taskChan <- task:
 		return true

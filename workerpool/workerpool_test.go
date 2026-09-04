@@ -99,6 +99,38 @@ func TestStop(t *testing.T) {
 	})
 }
 
+func TestSubmitAfterStopBeginsAlwaysPanics(t *testing.T) {
+	pool := New(1)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	pool.Submit(func() {
+		close(started)
+		<-release
+	})
+	<-started
+
+	stopReturned := make(chan struct{})
+	go func() {
+		pool.Stop()
+		close(stopReturned)
+	}()
+	for !pool.Stopped() {
+		runtime.Gosched()
+	}
+
+	for i := 0; i < 100; i++ {
+		assertPanics(t, "Submit must panic after stopping begins", func() {
+			pool.Submit(func() { t.Error("task submitted after stopping began") })
+		})
+	}
+	close(release)
+	select {
+	case <-stopReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not return after running task completed")
+	}
+}
+
 // TestStopWait 测试停止并等待所有任务完成
 func TestStopWait(t *testing.T) {
 	pool := New(1)
