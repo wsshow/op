@@ -8,7 +8,7 @@ English | [简体中文](README_zh.md)
 
 - **Generic**: Works with any type using Go generics (Go 1.24+ module requirement).
 - **Bidirectional**: `Send` yields a value and optionally receives a result from the caller.
-- **Early Termination**: `Stop` signals the generator to stop, preventing goroutine leaks.
+- **Early Termination**: `Stop` unblocks generator/consumer handshakes and asks the generator function to return.
 - **Simple Iteration**: `Next` fetches values until the generator is done.
 - **Resource Safe**: Completion is signaled automatically; call `Stop` when abandoning iteration early.
 
@@ -44,7 +44,7 @@ func main() {
 }
 ```
 
-**Output:**
+**One possible output** (the two goroutines may print their lines in a different order):
 
 ```
 sent 0, received: ack-0
@@ -61,7 +61,7 @@ received value: 4
 
 ### Early Termination
 
-Call `Stop()` to tell the generator to stop. The generator function should check `yield.Stopped()` and return promptly.
+Call `Stop()` to tell the generator to stop. It unblocks a pending `Yield.Send`, but cannot preempt arbitrary user code. The generator function should check `yield.Stopped()` and return promptly whenever it performs other blocking work.
 
 ```go
 gen := generator.NewGenerator(func(yield generator.Yield[int]) {
