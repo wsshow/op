@@ -5,6 +5,7 @@
 package slice
 
 import (
+	"slices"
 	"sort"
 )
 
@@ -55,7 +56,7 @@ func (s *Slice[T]) Shift() (T, bool) {
 
 // Unshift 在切片开头添加一个或多个元素，返回自身。
 func (s *Slice[T]) Unshift(values ...T) *Slice[T] {
-	s.data = append(values, s.data...)
+	s.data = slices.Insert(s.data, 0, values...)
 	return s
 }
 
@@ -71,10 +72,7 @@ func (s *Slice[T]) Insert(index int, values ...T) *Slice[T] {
 	if len(values) == 0 {
 		return s
 	}
-	n := len(values)
-	s.data = append(s.data, values...)
-	copy(s.data[index+n:], s.data[index:])
-	copy(s.data[index:], values)
+	s.data = slices.Insert(s.data, index, values...)
 	return s
 }
 

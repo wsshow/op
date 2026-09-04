@@ -3,6 +3,7 @@ package slice
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -106,6 +107,16 @@ func TestUnshiftMultiple(t *testing.T) {
 	}
 }
 
+func TestUnshiftDoesNotReuseInputBackingArray(t *testing.T) {
+	values := make([]int, 1, 4)
+	values[0] = 1
+	s := New(2, 3).Unshift(values...)
+	s.Set(0, 9)
+	if values[0] != 1 {
+		t.Fatalf("Unshift shared the input backing array: values = %v", values)
+	}
+}
+
 func TestInsert(t *testing.T) {
 	s := New(1, 3).Insert(1, 2)
 	expected := []int{1, 2, 3}
@@ -152,6 +163,17 @@ func TestInsertEmptyValues(t *testing.T) {
 	expected := []int{1, 2}
 	if !reflect.DeepEqual(s.Data(), expected) {
 		t.Errorf("Insert with no values should be no-op, expected %v, got %v", expected, s.Data())
+	}
+}
+
+func TestInsertHandlesOverlappingValues(t *testing.T) {
+	s := New[int]().Push(1, 2, 3, 4)
+	s.data = slices.Grow(s.data, 4)
+	values := s.Raw()[1:3]
+	s.Insert(0, values...)
+	want := []int{2, 3, 1, 2, 3, 4}
+	if got := s.Data(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Insert with overlapping values = %v, want %v", got, want)
 	}
 }
 
