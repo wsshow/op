@@ -678,15 +678,23 @@ func (l Linq[T]) Chunk(size int) [][]T {
 	if size <= 0 {
 		return [][]T{}
 	}
-	result := make([][]T, 0, (len(l.data)+size-1)/size)
-	for i := 0; i < len(l.data); i += size {
-		end := i + size
-		if end > len(l.data) {
-			end = len(l.data)
+	chunkCount := 0
+	if len(l.data) > 0 {
+		chunkCount = (len(l.data)-1)/size + 1
+	}
+	result := make([][]T, 0, chunkCount)
+	for start := 0; start < len(l.data); {
+		end := len(l.data)
+		if size < len(l.data)-start {
+			end = start + size
 		}
-		chunk := make([]T, end-i)
-		copy(chunk, l.data[i:end])
+		chunk := make([]T, end-start)
+		copy(chunk, l.data[start:end])
 		result = append(result, chunk)
+		if end == len(l.data) {
+			break
+		}
+		start = end
 	}
 	return result
 }

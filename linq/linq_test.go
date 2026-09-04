@@ -523,6 +523,10 @@ func TestChunk(t *testing.T) {
 	if len(From([]int{1, 2}).Chunk(0)) != 0 {
 		t.Error("Chunk(0) should return empty")
 	}
+	maxInt := int(^uint(0) >> 1)
+	if got := From([]int{1, 2}).Chunk(maxInt); !reflect.DeepEqual(got, [][]int{{1, 2}}) {
+		t.Fatalf("Chunk(maxInt) = %v, want [[1 2]]", got)
+	}
 }
 
 // ---------------------------------------------------------------------------
