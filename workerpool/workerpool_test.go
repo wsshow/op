@@ -399,3 +399,26 @@ func TestPanicWithoutHandler(t *testing.T) {
 	pool.StopWait()
 	// reaches here = no crash
 }
+
+func TestPanicInHandlerDoesNotStopWorker(t *testing.T) {
+	pool := New(1, WithPanicHandler(func(any) { panic("handler panic") }))
+	pool.Submit(func() { panic("task panic") })
+	executed := make(chan struct{})
+	pool.Submit(func() { close(executed) })
+
+	stopReturned := make(chan struct{})
+	go func() {
+		pool.StopWait()
+		close(stopReturned)
+	}()
+	select {
+	case <-executed:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not continue after panic handler panicked")
+	}
+	select {
+	case <-stopReturned:
+	case <-time.After(time.Second):
+		t.Fatal("StopWait deadlocked after panic handler panicked")
+	}
+}

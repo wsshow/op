@@ -310,7 +310,12 @@ func worker(task func(), workerChan chan func(), wg *sync.WaitGroup, panicHandle
 			defer func() {
 				if r := recover(); r != nil {
 					if panicHandler != nil {
-						panicHandler(r)
+						// panic handler 也是用户代码；它的 panic 不能终止 worker，
+						// 否则调度器记录的 worker 数会失真并可能永久阻塞。
+						func() {
+							defer func() { _ = recover() }()
+							panicHandler(r)
+						}()
 					}
 				}
 			}()
