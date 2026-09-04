@@ -598,6 +598,18 @@ func TestOptionsAreCopied(t *testing.T) {
 	}
 }
 
+func TestOptionsPreserveNilAndEmptySlices(t *testing.T) {
+	withNil := New(Options{}).Options()
+	if withNil.Args != nil || withNil.Env != nil {
+		t.Fatalf("nil slices changed: Args=%v Env=%v", withNil.Args, withNil.Env)
+	}
+
+	withEmpty := New(Options{Args: []string{}, Env: []string{}}).Options()
+	if withEmpty.Args == nil || withEmpty.Env == nil {
+		t.Fatalf("non-nil empty slices changed: Args=%v Env=%v", withEmpty.Args, withEmpty.Env)
+	}
+}
+
 func TestString(t *testing.T) {
 	p := New(helperOpts("sleep", "5"))
 	s := p.String()

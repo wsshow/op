@@ -419,7 +419,14 @@ func (p *Process) addRunError(r *processRun, err error) {
 }
 
 func cloneOptions(opts Options) Options {
-	opts.Args = append([]string(nil), opts.Args...)
-	opts.Env = append([]string(nil), opts.Env...)
+	opts.Args = cloneStrings(opts.Args)
+	opts.Env = cloneStrings(opts.Env)
 	return opts
+}
+
+func cloneStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	return append(make([]string, 0, len(values)), values...)
 }
