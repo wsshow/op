@@ -245,7 +245,6 @@ func (p *WorkerPool) dispatch() {
 
 	var (
 		workerCount int
-		idle        bool
 		wg          sync.WaitGroup
 	)
 
@@ -261,7 +260,6 @@ dispatchLoop:
 		select {
 		case task := <-p.taskChan:
 			p.handleTask(task, &workerCount, &wg)
-			idle = false
 			// 收到新任务后重置空闲计时器，确保超时时间一致
 			if !timeout.Stop() {
 				select {
@@ -271,12 +269,11 @@ dispatchLoop:
 			}
 			timeout.Reset(p.idleTimeout)
 		case <-timeout.C:
-			if idle && workerCount > 0 {
-				if p.killIdleWorker() {
-					workerCount--
-				}
+			// workerChan 为无缓冲通道，只有真正空闲并正在等待任务的
+			// worker 才能接收 nil；首次超时即可安全尝试逐个回收。
+			if workerCount > 0 && p.killIdleWorker() {
+				workerCount--
 			}
-			idle = true
 			timeout.Reset(p.idleTimeout)
 		case <-p.stopSignal:
 			break dispatchLoop
