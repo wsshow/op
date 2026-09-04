@@ -50,7 +50,7 @@ type WorkerPool struct {
 	waitingQueue deque.Deque[func()]
 
 	stopMutex  sync.Mutex
-	pauseMutex sync.Mutex
+	pauseGuard chan struct{}
 	stopOnce   sync.Once
 
 	isStopped    bool
@@ -76,6 +76,7 @@ func New(maxWorkers int, opts ...Option) *WorkerPool {
 		workerChan:  make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
+		pauseGuard:  make(chan struct{}, 1),
 	}
 
 	for _, opt := range opts {
@@ -173,8 +174,14 @@ func (p *WorkerPool) WaitingQueueSize() int {
 // 将被放入等待队列，待 ctx 取消或超时后恢复执行。
 // 若协程池已处于暂停状态，本次调用将等待前一次暂停结束后再执行。
 func (p *WorkerPool) Pause(ctx context.Context) {
-	p.pauseMutex.Lock()
-	defer p.pauseMutex.Unlock()
+	select {
+	case p.pauseGuard <- struct{}{}:
+		defer func() { <-p.pauseGuard }()
+	case <-ctx.Done():
+		return
+	case <-p.stopSignal:
+		return
+	}
 
 	p.stopMutex.Lock()
 	if p.isStopped {

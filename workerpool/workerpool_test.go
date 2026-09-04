@@ -361,6 +361,71 @@ func TestMultiplePause(t *testing.T) {
 	}
 }
 
+func TestPauseWaitingForPreviousPauseHonorsContext(t *testing.T) {
+	pool := New(1)
+	defer pool.StopWait()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	pool.Submit(func() {
+		close(started)
+		<-release
+	})
+	<-started
+
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	defer cancelFirst()
+	firstReturned := make(chan struct{})
+	go func() {
+		pool.Pause(firstCtx)
+		close(firstReturned)
+	}()
+	waitForQueueSize(t, pool, 1)
+	close(release)
+	waitForQueueSize(t, pool, 0)
+
+	executed := make(chan struct{})
+	pool.Submit(func() { close(executed) })
+	waitForQueueSize(t, pool, 1)
+
+	secondCtx, cancelSecond := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelSecond()
+	secondReturned := make(chan struct{})
+	go func() {
+		pool.Pause(secondCtx)
+		close(secondReturned)
+	}()
+
+	select {
+	case <-secondReturned:
+	case <-time.After(time.Second):
+		t.Fatal("second Pause did not honor its context while waiting for the first Pause")
+	}
+	select {
+	case <-executed:
+		t.Fatal("queued task ran while the first Pause was still active")
+	default:
+	}
+
+	cancelFirst()
+	select {
+	case <-firstReturned:
+	case <-time.After(time.Second):
+		t.Fatal("first Pause did not return after cancellation")
+	}
+	select {
+	case <-executed:
+	case <-time.After(time.Second):
+		t.Fatal("queued task did not run after the first Pause ended")
+	}
+}
+
 // assertPanics 检查函数是否引发 panic
 func assertPanics(t *testing.T, msg string, f func()) {
 	defer func() {
