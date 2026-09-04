@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -191,6 +192,28 @@ func TestStopMultiple(t *testing.T) {
 	gen.Stop()
 	gen.Stop() // 不应 panic
 	gen.Stop()
+}
+
+func TestStopConcurrent(t *testing.T) {
+	gen := NewGenerator(func(yield Yield[int]) {
+		<-yield.stopCh
+	})
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			gen.Stop()
+		}()
+	}
+	wg.Wait()
+
+	select {
+	case <-gen.closeCh:
+	case <-time.After(time.Second):
+		t.Fatal("generator did not exit after concurrent Stop calls")
+	}
 }
 
 func TestStoppedBeforeSend(t *testing.T) {

@@ -4,6 +4,8 @@
 // 每个 Generator 仅支持单个消费者 goroutine。
 package generator
 
+import "sync"
+
 // Yield 供生成器函数用于向消费者发送值并接收回传结果。
 type Yield[T any] struct {
 	valueCh  chan T          // 向消费者发送值
@@ -39,10 +41,11 @@ func (y *Yield[T]) Stopped() bool {
 
 // Generator 从生成器函数中产生值。
 type Generator[T any] struct {
-	yield   Yield[T]
-	stopCh  chan struct{}
-	closeCh chan struct{}
-	closed  bool
+	yield     Yield[T]
+	stopCh    chan struct{}
+	closeCh   chan struct{}
+	stopOnce  sync.Once
+	closeOnce sync.Once
 }
 
 // NewGenerator 创建并启动一个新的生成器，在后台 goroutine 中运行 genFunc。
@@ -66,12 +69,12 @@ func (g *Generator[T]) run(genFunc func(yield Yield[T])) {
 }
 
 func (g *Generator[T]) close() {
-	if !g.closed {
-		g.closed = true
+	g.closeOnce.Do(func() {
 		close(g.closeCh)
 		close(g.yield.valueCh)
-		close(g.yield.resultCh)
-	}
+		// resultCh 只有生成器接收、消费者发送。它无需关闭；保持打开可避免
+		// Stop 与 Next 并发时，Next 的 select 包含向已关闭 channel 发送。
+	})
 }
 
 // Next 返回生成的下一个值。done 为 true 时表示生成器已结束或被停止，
@@ -102,9 +105,5 @@ func (g *Generator[T]) Next(values ...any) (value T, done bool) {
 // Stop 通知生成器停止生成值。可安全地多次调用。
 // 调用 Stop 后，不应再调用 Next。
 func (g *Generator[T]) Stop() {
-	select {
-	case <-g.stopCh:
-	default:
-		close(g.stopCh)
-	}
+	g.stopOnce.Do(func() { close(g.stopCh) })
 }
