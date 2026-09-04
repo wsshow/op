@@ -789,8 +789,8 @@ func TestErrorPropagation_ForEach(t *testing.T) {
 }
 
 func TestSetOperationsPreserveComparer(t *testing.T) {
-	cmp := func(a, b int) int { return a - b }
-	l1 := From([]int{3, 1, 2}).WithComparer(cmp)
+	compareFn := func(a, b int) int { return a - b }
+	l1 := From([]int{3, 1, 2}).WithComparer(compareFn)
 	l2 := From([]int{4, 5})
 	// Union、Intersect、Except 应保留 l1 的比较器
 	for name, l := range map[string]Linq[int]{

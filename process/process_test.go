@@ -78,7 +78,8 @@ func TestHelperProcess(t *testing.T) {
 
 // helperOpts 返回使用测试二进制作为子进程的 Options。
 func helperOpts(args ...string) Options {
-	all := []string{"-test.run=TestHelperProcess", "--"}
+	all := make([]string, 0, 2+len(args))
+	all = append(all, "-test.run=TestHelperProcess", "--")
 	all = append(all, args...)
 	return Options{ExecPath: os.Args[0], Args: all}
 }
@@ -459,8 +460,7 @@ func TestOnAfterCanRestart(t *testing.T) {
 	completed := make(chan struct{})
 	startErr := make(chan error, 1)
 
-	var p *Process
-	p = New(Options{
+	p := New(Options{
 		ExecPath: os.Args[0],
 		Args:     []string{"-test.run=TestHelperProcess", "--", "exit", "0"},
 		OnAfter: func(proc *Process) {

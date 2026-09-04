@@ -73,7 +73,7 @@ func NewEmitter[E comparable, T any]() *Emitter[E, T] {
 // addListener 内部方法，添加监听器到指定事件，返回 Subscription
 func (e *Emitter[E, T]) addListener(event E, listener Listener[T], once bool) *Subscription[E, T] {
 	e.mu.Lock()
-	warn := e.maxListeners != -1 && len(e.events[event])+1 > e.maxListeners
+	warn := e.maxListeners != -1 && len(e.events[event]) >= e.maxListeners
 	logger := e.logger
 	maxListeners := e.maxListeners
 

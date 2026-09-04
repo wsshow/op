@@ -1,0 +1,84 @@
+# golangci-lint v2 configuration for github.com/wsshow/op.
+version: "2"
+run:
+  go: "1.24"
+  modules-download-mode: readonly
+linters:
+  enable:
+    - errorlint
+    - gocritic
+    - gosec
+    - makezero
+    - nilerr
+    - prealloc
+    - predeclared
+    - unconvert
+    - unparam
+    - wastedassign
+  settings:
+    errcheck:
+      check-blank: false
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - experimental
+        - opinionated
+    gosec:
+      excludes:
+        - G104
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - gosec
+        path: process/
+        text: G204
+      - linters:
+          - gosec
+        path: workerpool/
+        text: G115
+      - linters:
+          - gocritic
+        path: process/
+        text: hugeParam
+      - linters:
+          - gocritic
+        path: op\.go
+        text: hugeParam
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/wsshow/op
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
