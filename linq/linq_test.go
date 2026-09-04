@@ -237,6 +237,23 @@ func TestOrderByThenBy(t *testing.T) {
 	}
 }
 
+func TestThenByDoesNotMutatePreviousOrdering(t *testing.T) {
+	type item struct{ group, value int }
+	primary := OrderBy(
+		From([]item{{1, 3}, {1, 1}, {1, 2}, {2, 0}}),
+		func(x item) int { return x.group },
+	)
+	before := primary.ToSlice()
+	secondary := primary.ThenBy(func(a, b item) int { return cmp.Compare(a.value, b.value) })
+
+	if !reflect.DeepEqual(primary.Results(), before) {
+		t.Fatalf("ThenBy mutated the previous ordering: got %v, want %v", primary.Results(), before)
+	}
+	if got := secondary.Results(); got[0].value != 1 || got[1].value != 2 || got[2].value != 3 {
+		t.Fatalf("ThenBy result = %v, want values [1 2 3 0]", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Aggregation
 // ---------------------------------------------------------------------------

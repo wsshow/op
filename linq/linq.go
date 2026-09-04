@@ -348,6 +348,9 @@ func (ol OrderedLinq[T]) ThenBy(cmpFn func(a, b T) int) OrderedLinq[T] {
 	if ol.err != nil {
 		return ol
 	}
+	data := make([]T, len(ol.data))
+	copy(data, ol.data)
+	ol.data = data
 	prev := ol.cmp
 	ol.cmp = func(a, b T) int {
 		if c := prev(a, b); c != 0 {
