@@ -113,7 +113,7 @@ func (e *Emitter[E, T]) Once(event E, listener Listener[T]) *Subscription[E, T] 
 	return e.addListener(event, listener, true)
 }
 
-// removeListenerByID 通过 ID 移除监听器，使用 swap-remove 优化为 O(1)
+// removeListenerByID 通过 ID 移除监听器，并保留其余监听器的注册顺序。
 func (e *Emitter[E, T]) removeListenerByID(event E, id uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -128,7 +128,7 @@ func (e *Emitter[E, T]) removeListenerByID(event E, id uint64) {
 			continue
 		}
 		lastIdx := len(listeners) - 1
-		listeners[i] = listeners[lastIdx]
+		copy(listeners[i:], listeners[i+1:])
 		listeners[lastIdx] = nil
 		e.events[event] = listeners[:lastIdx]
 

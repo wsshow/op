@@ -389,6 +389,20 @@ func TestUnsubscribe(t *testing.T) {
 	}
 }
 
+func TestUnsubscribePreservesListenerOrder(t *testing.T) {
+	em := NewEmitter[string, int]()
+	order := make([]int, 0, 2)
+	first := em.On("test", func(int) { order = append(order, 1) })
+	em.On("test", func(int) { order = append(order, 2) })
+	em.On("test", func(int) { order = append(order, 3) })
+
+	first.Unsubscribe()
+	em.EmitSync("test", 0)
+	if len(order) != 2 || order[0] != 2 || order[1] != 3 {
+		t.Fatalf("listener order after unsubscribe = %v, want [2 3]", order)
+	}
+}
+
 func TestDoubleUnsubscribe(t *testing.T) {
 	em := NewEmitter[string, string]()
 	sub := em.On("test", func(s string) {})
