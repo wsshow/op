@@ -49,16 +49,23 @@ type Options struct {
 	MinRestartInterval time.Duration
 }
 
+// processRun 保存一次启动的全部可变状态。每次启动使用独立实例，避免退出回调
+// 重启进程时，旧运行代次关闭或覆盖新代次的状态。
+type processRun struct {
+	done         chan struct{}
+	cancel       context.CancelFunc
+	cmd          *exec.Cmd
+	processState *os.ProcessState
+	err          error
+}
+
 // Process 管理单个外部进程的完整生命周期。
 // 所有方法均并发安全，请通过 New 创建实例。
 type Process struct {
-	opts       Options
-	cmd        *exec.Cmd
-	cancel     context.CancelFunc
-	done       chan struct{} // 每次启动时重建，退出时关闭
-	err        error
-	mu         sync.Mutex
-	wg         sync.WaitGroup
+	opts Options
+	run  *processRun
+	mu   sync.Mutex
+
 	state      atomic.Int32 // stateIdle / stateRunning / stateStopped
 	restarting atomic.Bool
 	lastStart  atomic.Int64 // 上次启动的 UnixNano 时间戳
@@ -66,23 +73,25 @@ type Process struct {
 
 // New 创建 Process 实例。
 func New(opts Options) *Process {
-	p := &Process{opts: opts}
+	p := &Process{opts: cloneOptions(opts)}
 	p.state.Store(stateIdle)
 	return p
 }
 
 // Run 同步运行进程，阻塞至退出，返回运行期间的累计错误。
 func (p *Process) Run() error {
-	if err := p.launch(false); err != nil {
+	r, err := p.launch(false)
+	if err != nil {
 		return err
 	}
-	return p.Wait()
+	return p.waitRun(r)
 }
 
 // Start 异步启动进程，立即返回。运行错误通过 Wait 或 OnAfter 获取。
 // 进程已在运行时返回错误。
 func (p *Process) Start() error {
-	return p.launch(true)
+	_, err := p.launch(true)
+	return err
 }
 
 // SetOptions 在进程未运行时替换配置。运行中调用返回错误。
@@ -92,123 +101,136 @@ func (p *Process) SetOptions(opts Options) error {
 	if p.state.Load() == stateRunning {
 		return errors.New("cannot update options while process is running")
 	}
-	p.opts = opts
+	p.opts = cloneOptions(opts)
 	return nil
 }
 
-func (p *Process) launch(async bool) error {
+func (p *Process) launch(async bool) (*processRun, error) {
 	p.mu.Lock()
 	if p.state.Load() == stateRunning {
 		p.mu.Unlock()
-		return errors.New("process is already running")
+		return nil, errors.New("process is already running")
 	}
-	p.err = nil
-	p.done = make(chan struct{})
-	parentCtx := p.opts.Context
+
+	opts := cloneOptions(p.opts)
+	parentCtx := opts.Context
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
 	ctx, cancel := context.WithCancel(parentCtx)
-	p.cancel = cancel
+	r := &processRun{done: make(chan struct{}), cancel: cancel}
+	p.run = r
 	p.state.Store(stateRunning)
 	p.lastStart.Store(time.Now().UnixNano())
 	p.mu.Unlock()
 
 	if async {
-		go p.exec(ctx)
+		go p.exec(ctx, opts, r)
 	} else {
-		p.exec(ctx)
+		p.exec(ctx, opts, r)
 	}
-	return nil
+	return r, nil
 }
 
-func (p *Process) exec(ctx context.Context) {
-	defer func() {
-		p.state.Store(stateStopped)
-		if p.opts.OnAfter != nil {
-			p.opts.OnAfter(p)
-		}
-		close(p.done)
-	}()
-
-	if p.opts.ExecPath == "" {
-		p.addError(errors.New("exec path is empty"))
+func (p *Process) exec(ctx context.Context, opts Options, r *processRun) {
+	defer p.finishRun(opts, r)
+	if opts.ExecPath == "" {
+		p.addRunError(r, errors.New("exec path is empty"))
 		return
 	}
 
+	cmd := exec.CommandContext(ctx, opts.ExecPath, opts.Args...)
+	cmd.Env = opts.Env
+	cmd.Dir = opts.Dir
+	cmd.Stdin = opts.Stdin
+	cmd.SysProcAttr = opts.SysProcAttr
 	p.mu.Lock()
-	p.cmd = exec.CommandContext(ctx, p.opts.ExecPath, p.opts.Args...)
-	p.cmd.Env = p.opts.Env
-	p.cmd.Dir = p.opts.Dir
-	p.cmd.Stdin = p.opts.Stdin
-	p.cmd.SysProcAttr = p.opts.SysProcAttr
+	r.cmd = cmd
 	p.mu.Unlock()
 
 	var stdout, stderr io.ReadCloser
-
-	if p.opts.OnStdout != nil {
-		out, err := p.cmd.StdoutPipe()
+	if opts.OnStdout != nil {
+		out, err := cmd.StdoutPipe()
 		if err != nil {
-			p.addError(fmt.Errorf("stdout pipe: %w", err))
+			p.addRunError(r, fmt.Errorf("stdout pipe: %w", err))
 			return
 		}
 		stdout = out
 	}
-	if p.opts.OnStderr != nil {
-		out, err := p.cmd.StderrPipe()
+	if opts.OnStderr != nil {
+		out, err := cmd.StderrPipe()
 		if err != nil {
-			p.addError(fmt.Errorf("stderr pipe: %w", err))
+			p.addRunError(r, fmt.Errorf("stderr pipe: %w", err))
 			return
 		}
 		stderr = out
 	}
 
-	if p.opts.OnBefore != nil {
-		p.opts.OnBefore(p)
+	if opts.OnBefore != nil {
+		opts.OnBefore(p)
 	}
 
+	// Start 会写入 cmd.Process；与 Pid、Signal 和 Stop 对该字段的读取使用同一把锁。
 	p.mu.Lock()
-	if err := p.cmd.Start(); err != nil {
-		p.mu.Unlock()
-		p.addError(fmt.Errorf("start: %w", err))
+	err := cmd.Start()
+	p.mu.Unlock()
+	if err != nil {
+		p.addRunError(r, fmt.Errorf("start: %w", err))
 		return
 	}
-	p.mu.Unlock()
 
+	var readers sync.WaitGroup
 	if stdout != nil {
-		p.wg.Add(1)
+		readers.Add(1)
 		go func() {
-			defer p.wg.Done()
-			p.readLines(stdout, p.opts.OnStdout, "stdout")
+			defer readers.Done()
+			p.readLines(r, stdout, opts.OnStdout, "stdout")
 		}()
 	}
 	if stderr != nil {
-		p.wg.Add(1)
+		readers.Add(1)
 		go func() {
-			defer p.wg.Done()
-			p.readLines(stderr, p.opts.OnStderr, "stderr")
+			defer readers.Done()
+			p.readLines(r, stderr, opts.OnStderr, "stderr")
 		}()
 	}
 
-	// 必须先等读取协程结束，再调用 cmd.Wait（exec.Cmd 文档要求）。
-	p.wg.Wait()
-
-	if err := p.cmd.Wait(); err != nil && ctx.Err() == nil {
-		p.addError(fmt.Errorf("wait: %w", err))
+	readers.Wait()
+	waitErr := cmd.Wait()
+	// Wait 会写 ProcessState；只在它返回后发布不可变结果。
+	p.mu.Lock()
+	r.processState = cmd.ProcessState
+	p.mu.Unlock()
+	if waitErr != nil && ctx.Err() == nil {
+		p.addRunError(r, fmt.Errorf("wait: %w", waitErr))
 	}
 }
 
-func (p *Process) readLines(r io.Reader, handler func(string), source string) {
-	br := bufio.NewReader(r)
+func (p *Process) finishRun(opts Options, r *processRun) {
+	r.cancel()
+	p.mu.Lock()
+	if p.run == r {
+		p.state.Store(stateStopped)
+	}
+	p.mu.Unlock()
+
+	// done 属于本次运行。OnAfter 可以启动新代次，旧代次只关闭自己的 done。
+	defer close(r.done)
+	if opts.OnAfter != nil {
+		opts.OnAfter(p)
+	}
+}
+
+func (p *Process) readLines(r *processRun, reader io.Reader, handler func(string), source string) {
+	br := bufio.NewReader(reader)
 	for {
 		line, err := br.ReadString('\n')
-		// line 包含分隔符 '\n'，仅在干净 EOF（无数据）时为空字符串。
 		if line != "" {
 			handler(strings.TrimRight(line, "\r\n"))
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				p.addError(fmt.Errorf("%s: %w", source, err))
+				p.addRunError(r, fmt.Errorf("%s: %w", source, err))
 			}
 			return
 		}
@@ -216,39 +238,51 @@ func (p *Process) readLines(r io.Reader, handler func(string), source string) {
 }
 
 // Stop 发送取消信号，等待进程退出或默认超时后强制终止。
-func (p *Process) Stop() {
-	p.StopWithTimeout(defaultStopTimeout)
-}
+func (p *Process) Stop() { p.StopWithTimeout(defaultStopTimeout) }
 
 // StopWithTimeout 与 Stop 相同，但支持自定义宽限时间。
 func (p *Process) StopWithTimeout(timeout time.Duration) {
 	p.mu.Lock()
-	if p.state.Load() != stateRunning {
+	if p.state.Load() != stateRunning || p.run == nil {
 		p.mu.Unlock()
 		return
 	}
-	cancel := p.cancel
-	done := p.done
+	r := p.run
+	cancel := r.cancel
 	p.mu.Unlock()
 
-	if cancel != nil {
-		cancel()
+	cancel()
+	if waitDone(r.done, timeout) {
+		return
 	}
 
-	select {
-	case <-done:
-	case <-time.After(timeout):
-		p.mu.Lock()
-		cmd := p.cmd
-		p.mu.Unlock()
-		if cmd != nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+	p.mu.Lock()
+	cmd := r.cmd
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	p.mu.Unlock()
+	if !waitDone(r.done, killWaitTimeout) {
+		p.addRunError(r, errors.New("process could not be killed within timeout"))
+	}
+}
+
+func waitDone(done <-chan struct{}, timeout time.Duration) bool {
+	if timeout <= 0 {
 		select {
 		case <-done:
-		case <-time.After(killWaitTimeout):
-			p.addError(errors.New("process could not be killed within timeout"))
+			return true
+		default:
+			return false
 		}
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
 
@@ -259,108 +293,113 @@ func (p *Process) Restart() error {
 		return nil
 	}
 	defer p.restarting.Store(false)
-
 	p.mu.Lock()
 	interval := p.opts.MinRestartInterval
 	p.mu.Unlock()
-
 	if interval > 0 {
 		lastStart := time.Unix(0, p.lastStart.Load())
 		if elapsed := time.Since(lastStart); elapsed < interval {
 			time.Sleep(interval - elapsed)
 		}
 	}
-
 	p.Stop()
 	return p.Start()
 }
 
-// Wait 阻塞至进程退出，返回运行期间累计的错误。
+// Wait 阻塞至调用时对应的运行代次退出，并返回该次运行累计的错误。
 // 进程从未启动时立即返回错误。
 func (p *Process) Wait() error {
 	p.mu.Lock()
-	done := p.done
+	r := p.run
 	p.mu.Unlock()
-
-	if done == nil {
+	if r == nil {
 		return errors.New("process has not been started")
 	}
-	<-done
-	return p.Error()
+	return p.waitRun(r)
 }
 
-// Done 返回进程退出时关闭的只读 channel，便于 select 使用。
+func (p *Process) waitRun(r *processRun) error {
+	<-r.done
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return r.err
+}
+
+// Done 返回调用时对应的运行代次退出时关闭的只读 channel，便于 select 使用。
 // 进程从未启动时返回 nil。
 func (p *Process) Done() <-chan struct{} {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.done
+	if p.run == nil {
+		return nil
+	}
+	return p.run.done
 }
 
 // IsRunning 报告进程当前是否正在运行。
-func (p *Process) IsRunning() bool {
-	return p.state.Load() == stateRunning
-}
+func (p *Process) IsRunning() bool { return p.state.Load() == stateRunning }
 
-// Pid 返回进程 ID，未启动时返回 -1。
+// Pid 返回当前或最近一次进程 ID，尚未成功启动时返回 -1。
 func (p *Process) Pid() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cmd != nil && p.cmd.Process != nil {
-		return p.cmd.Process.Pid
+	if p.run != nil && p.run.cmd != nil && p.run.cmd.Process != nil {
+		return p.run.cmd.Process.Pid
 	}
 	return -1
 }
 
-// ExitCode 返回进程退出码；未退出或异常终止时返回 -1。
+// ExitCode 返回最近一次进程退出码；未退出或异常终止时返回 -1。
 func (p *Process) ExitCode() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cmd != nil && p.cmd.ProcessState != nil {
-		return p.cmd.ProcessState.ExitCode()
+	if p.run != nil && p.run.processState != nil {
+		return p.run.processState.ExitCode()
 	}
 	return -1
 }
 
-// State 返回进程退出状态，未退出时返回 nil。
+// State 返回最近一次进程退出状态，未退出时返回 nil。
 func (p *Process) State() *os.ProcessState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cmd != nil {
-		return p.cmd.ProcessState
+	if p.run == nil {
+		return nil
 	}
-	return nil
+	return p.run.processState
 }
 
-// Error 返回本次运行累计的所有错误（via errors.Join）。
+// Error 返回当前或最近一次运行累计的所有错误（via errors.Join）。
 func (p *Process) Error() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.err
+	if p.run == nil {
+		return nil
+	}
+	return p.run.err
 }
 
-// Options 返回当前配置的副本。
+// Options 返回当前配置的副本。Args 和 Env 也会被复制。
 func (p *Process) Options() Options {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.opts
+	return cloneOptions(p.opts)
 }
 
 // Signal 向运行中的进程发送信号。进程未运行时返回错误。
 func (p *Process) Signal(sig os.Signal) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cmd == nil || p.cmd.Process == nil {
+	if p.state.Load() != stateRunning || p.run == nil || p.run.cmd == nil || p.run.cmd.Process == nil {
 		return errors.New("process is not running")
 	}
-	return p.cmd.Process.Signal(sig)
+	return p.run.cmd.Process.Signal(sig)
 }
 
 // String 返回进程的调试信息。
 func (p *Process) String() string {
-	s := p.state.Load()
 	var stateStr string
-	switch s {
+	switch p.state.Load() {
 	case stateIdle:
 		stateStr = "idle"
 	case stateRunning:
@@ -373,8 +412,14 @@ func (p *Process) String() string {
 	return fmt.Sprintf("Process{pid: %d, state: %s}", p.Pid(), stateStr)
 }
 
-func (p *Process) addError(err error) {
+func (p *Process) addRunError(r *processRun, err error) {
 	p.mu.Lock()
-	p.err = errors.Join(p.err, err)
+	r.err = errors.Join(r.err, err)
 	p.mu.Unlock()
+}
+
+func cloneOptions(opts Options) Options {
+	opts.Args = append([]string(nil), opts.Args...)
+	opts.Env = append([]string(nil), opts.Env...)
+	return opts
 }

@@ -186,6 +186,29 @@ func TestExitCodeWhileRunning(t *testing.T) {
 	}
 }
 
+func TestStateQueriesConcurrentWithWait(t *testing.T) {
+	p := New(helperOpts("exit", "0"))
+	mustStart(t, p)
+	done := p.Done()
+
+	for {
+		select {
+		case <-done:
+			if state := p.State(); state == nil {
+				t.Fatal("State should be published when Done is closed")
+			}
+			if code := p.ExitCode(); code != 0 {
+				t.Fatalf("ExitCode = %d, want 0", code)
+			}
+			return
+		default:
+			_ = p.State()
+			_ = p.ExitCode()
+			_ = p.Pid()
+		}
+	}
+}
+
 func TestStateBeforeStart(t *testing.T) {
 	p := New(helperOpts("exit", "0"))
 	if s := p.State(); s != nil {
@@ -431,6 +454,44 @@ func TestRestartConcurrent(t *testing.T) {
 	}
 }
 
+func TestOnAfterCanRestart(t *testing.T) {
+	var exits atomic.Int32
+	completed := make(chan struct{})
+	startErr := make(chan error, 1)
+
+	var p *Process
+	p = New(Options{
+		ExecPath: os.Args[0],
+		Args:     []string{"-test.run=TestHelperProcess", "--", "exit", "0"},
+		OnAfter: func(proc *Process) {
+			if exits.Add(1) == 1 {
+				startErr <- proc.Start()
+				return
+			}
+			close(completed)
+		},
+	})
+
+	mustStart(t, p)
+	select {
+	case err := <-startErr:
+		if err != nil {
+			t.Fatalf("Start from OnAfter: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnAfter did not restart process")
+	}
+
+	select {
+	case <-completed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("restarted process did not complete")
+	}
+	if got := exits.Load(); got != 2 {
+		t.Fatalf("exit callbacks = %d, want 2", got)
+	}
+}
+
 // ========================================================================
 // Signal
 // ========================================================================
@@ -514,6 +575,26 @@ func TestOptions(t *testing.T) {
 	got := p.Options()
 	if got.ExecPath != os.Args[0] {
 		t.Fatalf("ExecPath = %q, want %q", got.ExecPath, os.Args[0])
+	}
+}
+
+func TestOptionsAreCopied(t *testing.T) {
+	opts := helperOpts("exit", "0")
+	opts.Env = []string{"PROCESS_TEST=value"}
+	p := New(opts)
+
+	opts.Args[0] = "mutated"
+	opts.Env[0] = "mutated"
+	got := p.Options()
+	if got.Args[0] == "mutated" || got.Env[0] == "mutated" {
+		t.Fatal("New retained caller-owned option slices")
+	}
+
+	got.Args[0] = "changed again"
+	got.Env[0] = "changed again"
+	again := p.Options()
+	if again.Args[0] == "changed again" || again.Env[0] == "changed again" {
+		t.Fatal("Options exposed internal option slices")
 	}
 }
 
